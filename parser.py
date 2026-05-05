@@ -1,7 +1,6 @@
 """
 parser.py
-รับข้อความดิบจาก LINE แล้วใช้ Gemini วิเคราะห์ intent และ extract ข้อมูล
-ใช้ httpx เรียก Gemini REST API โดยตรง (ไม่ผ่าน SDK เพื่อหลีกเลี่ยงปัญหา v1beta)
+รับข้อความดิบจาก LINE แล้วใช้ Groq API (Llama 3.3) วิเคราะห์ intent และ extract ข้อมูล
 """
 
 import httpx
@@ -14,8 +13,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 SYSTEM_PROMPT = """
 คุณคือ AI parser ของ KENDO AI ระบบ financial tracker และ note-taker ส่วนตัว
@@ -98,7 +97,7 @@ def _build_history_context(history: list) -> str:
 
 def parse_message(user_text: str, history: list = None) -> dict:
     """
-    เรียก Gemini REST API โดยตรงผ่าน httpx
+    เรียก Groq API (Llama 3.3 70B) ผ่าน httpx
     history: list of {"role": "user"|"model", "parts": ["..."]}
     """
     try:
@@ -106,64 +105,52 @@ def parse_message(user_text: str, history: list = None) -> dict:
         now = datetime.now(bangkok_tz)
 
         history_context = _build_history_context(history)
-        prompt = f"""{history_context}วันเวลาปัจจุบัน: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}
+        user_content = f"""{history_context}วันเวลาปัจจุบัน: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}
 ข้อความจากผู้ใช้: "{user_text}"
 """
 
         models_to_try = [
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
         ]
 
-        payload = {
-            "system_instruction": {
-                "parts": [{"text": SYSTEM_PROMPT}]
-            },
-            "contents": [
-                {"role": "user", "parts": [{"text": prompt}]}
-            ],
-            "generationConfig": {
-                "temperature": 0.1
-            }
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
         }
 
         last_error = None
         for model_name in models_to_try:
             try:
-                url = f"{GEMINI_BASE_URL}/{model_name}:generateContent"
+                payload = {
+                    "model": model_name,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_content}
+                    ],
+                    "temperature": 0.1,
+                    "response_format": {"type": "json_object"}
+                }
+
                 with httpx.Client(timeout=30) as client:
-                    resp = client.post(
-                        url,
-                        params={"key": GEMINI_API_KEY},
-                        json=payload
-                    )
+                    resp = client.post(GROQ_API_URL, headers=headers, json=payload)
 
                 if resp.status_code == 429:
-                    print(f"[parser] {model_name} quota exceeded (429), trying next...")
+                    print(f"[parser] {model_name} quota exceeded, trying next...")
                     last_error = "quota_exceeded"
                     continue
 
-                if resp.status_code == 404:
-                    print(f"[parser] {model_name} not found (404): {resp.text[:300]}")
-                    last_error = "model_not_found"
-                    continue
-
-                if resp.status_code == 400:
-                    print(f"[parser] {model_name} bad request (400): {resp.text[:300]}")
-                    last_error = f"bad_request"
-                    continue
-
-                if resp.status_code == 403:
-                    print(f"[parser] AUTH ERROR (403): {resp.text[:300]}")
+                if resp.status_code == 401:
+                    print(f"[parser] GROQ_API_KEY ไม่ถูกต้อง (401)")
                     return {"success": False, "error": "auth_error",
-                            "message": "GEMINI_API_KEY ไม่ถูกต้องหรือไม่มีสิทธิ์"}
+                            "message": "GROQ_API_KEY ไม่ถูกต้อง"}
 
                 resp.raise_for_status()
 
                 data = resp.json()
-                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                raw_text = re.sub(r"```json|```", "", raw_text).strip()
-                parsed = json.loads(raw_text)
+                text = data["choices"][0]["message"]["content"].strip()
+                text = re.sub(r"```json|```", "", text).strip()
+                parsed = json.loads(text)
 
                 print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
                 return {"success": True, "data": parsed}
@@ -174,41 +161,28 @@ def parse_message(user_text: str, history: list = None) -> dict:
                 continue
 
         if last_error == "quota_exceeded":
-            return {
-                "success": False,
-                "error": "quota_exceeded",
-                "message": "Gemini quota หมดทุก model"
-            }
+            return {"success": False, "error": "quota_exceeded",
+                    "message": "Groq quota หมดทุก model"}
 
-        return {
-            "success": False,
-            "error": "api_error",
-            "message": f"ไม่สามารถเรียก Gemini API ได้: {last_error}"
-        }
+        return {"success": False, "error": "api_error",
+                "message": f"ไม่สามารถเรียก Groq API ได้: {last_error}"}
 
     except json.JSONDecodeError as e:
-        return {
-            "success": False,
-            "error": "parse_error",
-            "message": f"Gemini ตอบกลับในรูปแบบที่ไม่ถูกต้อง: {str(e)}"
-        }
+        return {"success": False, "error": "parse_error",
+                "message": f"ตอบกลับในรูปแบบที่ไม่ถูกต้อง: {str(e)}"}
     except Exception as e:
-        return {
-            "success": False,
-            "error": "api_error",
-            "message": f"เกิดข้อผิดพลาด: {str(e)}"
-        }
+        return {"success": False, "error": "api_error",
+                "message": f"เกิดข้อผิดพลาด: {str(e)}"}
 
 
 # ทดสอบ
 if __name__ == "__main__":
     tests = [
         "กินกะเพรา 60 บาท",
-        "เติมน้ำมัน 150",
-        "เตือนฉันพรุ่งนี้ 9 โมงเช้า ต่อ พรบ มอเตอร์ไซค์",
-        "สรุปรายจ่ายเดือนนี้",
         "หิวข้าวแล้ว ไปกินมา 80",
         "เงินเดือนออกแล้ว ได้มา 18500",
+        "เตือนพรุ่งนี้ 9 โมง ประชุม",
+        "สรุปเดือนนี้",
     ]
     for t in tests:
         result = parse_message(t)

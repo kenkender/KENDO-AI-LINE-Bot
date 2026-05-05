@@ -17,3 +17,5 @@ services:
         sync: false
       - key: GOOGLE_CREDENTIALS_JSON
         sync: false
+      - key: GROQ_API_KEY
+        sync: false
