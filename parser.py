@@ -1,9 +1,10 @@
 """
 parser.py
 รับข้อความดิบจาก LINE แล้วใช้ Gemini วิเคราะห์ intent และ extract ข้อมูล
+ใช้ httpx เรียก Gemini REST API โดยตรง (ไม่ผ่าน SDK เพื่อหลีกเลี่ยงปัญหา v1beta)
 """
 
-import google.generativeai as genai
+import httpx
 import json
 import re
 import os
@@ -13,7 +14,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 SYSTEM_PROMPT = """
 คุณคือ AI parser ของ KENDO AI ระบบ financial tracker และ note-taker ส่วนตัว
@@ -96,50 +98,83 @@ def _build_history_context(history: list) -> str:
 
 def parse_message(user_text: str, history: list = None) -> dict:
     """
+    เรียก Gemini REST API โดยตรงผ่าน httpx
     history: list of {"role": "user"|"model", "parts": ["..."]}
-             จาก 10 ข้อความล่าสุดของ user นั้น
     """
     try:
         bangkok_tz = pytz.timezone("Asia/Bangkok")
         now = datetime.now(bangkok_tz)
 
-        # embed history เป็น text ใน prompt แทน start_chat (หลีกเลี่ยง v1beta issue)
         history_context = _build_history_context(history)
         prompt = f"""{history_context}วันเวลาปัจจุบัน: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}
 ข้อความจากผู้ใช้: "{user_text}"
 """
+
         models_to_try = [
             "gemini-2.0-flash",
-            "gemini-2.0-flash-lite",
-            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
         ]
+
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": SYSTEM_PROMPT}]
+            },
+            "contents": [
+                {"role": "user", "parts": [{"text": prompt}]}
+            ],
+            "generationConfig": {
+                "temperature": 0.1
+            }
+        }
 
         last_error = None
         for model_name in models_to_try:
             try:
-                model = genai.GenerativeModel(
-                    model_name=model_name,
-                    system_instruction=SYSTEM_PROMPT
-                )
-                response = model.generate_content(prompt)
-                raw_text = response.text.strip()
+                url = f"{GEMINI_BASE_URL}/{model_name}:generateContent"
+                with httpx.Client(timeout=30) as client:
+                    resp = client.post(
+                        url,
+                        params={"key": GEMINI_API_KEY},
+                        json=payload
+                    )
+
+                if resp.status_code == 429:
+                    print(f"[parser] {model_name} quota exceeded, trying next...")
+                    last_error = "quota_exceeded"
+                    continue
+
+                if resp.status_code == 404:
+                    print(f"[parser] {model_name} not found, trying next...")
+                    last_error = "model_not_found"
+                    continue
+
+                resp.raise_for_status()
+
+                data = resp.json()
+                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 raw_text = re.sub(r"```json|```", "", raw_text).strip()
                 parsed = json.loads(raw_text)
+
                 print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
                 return {"success": True, "data": parsed}
 
-            except Exception as e:
-                if "429" in str(e) or "quota" in str(e).lower():
-                    print(f"[parser] {model_name} quota exceeded, trying next...")
-                    last_error = e
-                    continue
-                else:
-                    raise e
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                print(f"[parser] {model_name} connection error: {e}, trying next...")
+                last_error = str(e)
+                continue
+
+        if last_error == "quota_exceeded":
+            return {
+                "success": False,
+                "error": "quota_exceeded",
+                "message": "Gemini quota หมดทุก model"
+            }
 
         return {
             "success": False,
-            "error": "quota_exceeded",
-            "message": f"Gemini quota หมดทุก model: {str(last_error)}"
+            "error": "api_error",
+            "message": f"ไม่สามารถเรียก Gemini API ได้: {last_error}"
         }
 
     except json.JSONDecodeError as e:
@@ -155,6 +190,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
             "message": f"เกิดข้อผิดพลาด: {str(e)}"
         }
 
+
 # ทดสอบ
 if __name__ == "__main__":
     tests = [
@@ -162,8 +198,8 @@ if __name__ == "__main__":
         "เติมน้ำมัน 150",
         "เตือนฉันพรุ่งนี้ 9 โมงเช้า ต่อ พรบ มอเตอร์ไซค์",
         "สรุปรายจ่ายเดือนนี้",
-        "โอน 500",
-        "ได้เงินเดือน 18500",
+        "หิวข้าวแล้ว ไปกินมา 80",
+        "เงินเดือนออกแล้ว ได้มา 18500",
     ]
     for t in tests:
         result = parse_message(t)
