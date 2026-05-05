@@ -23,16 +23,20 @@ RICH_MENU = {
     "chatBarText": "เมนูหลัก 📋",
     "areas": [
         {
-            "bounds": {"x": 0, "y": 0, "width": 833, "height": 843},
+            "bounds": {"x": 0, "y": 0, "width": 625, "height": 843},
             "action": {"type": "message", "label": "สรุปเดือนนี้", "text": "สรุปเดือนนี้"}
         },
         {
-            "bounds": {"x": 833, "y": 0, "width": 834, "height": 843},
+            "bounds": {"x": 625, "y": 0, "width": 625, "height": 843},
             "action": {"type": "message", "label": "บันทึกรายรับ", "text": "รายรับ"}
         },
         {
-            "bounds": {"x": 1667, "y": 0, "width": 833, "height": 843},
+            "bounds": {"x": 1250, "y": 0, "width": 625, "height": 843},
             "action": {"type": "message", "label": "บันทึกรายจ่าย", "text": "รายจ่าย"}
+        },
+        {
+            "bounds": {"x": 1875, "y": 0, "width": 625, "height": 843},
+            "action": {"type": "message", "label": "บันทึกโน้ต/เตือน", "text": "โน้ต"}
         }
     ]
 }
@@ -49,6 +53,39 @@ def create_rich_menu():
     return resp.json().get("richMenuId")
 
 
+def hex_to_rgb(hex_color: str):
+    h = hex_color.lstrip("#")
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+
+def draw_icon(draw, cx: int, cy: int, icon_type: str, color: tuple, size: int = 85):
+    """วาด icon แบบ geometric แทน emoji"""
+    if icon_type == "chart":
+        bars = [
+            (cx - 80, cy - 70, cx - 35, cy + 55),
+            (cx - 15, cy - 15, cx + 30, cy + 55),
+            (cx + 45, cy - 95, cx + 90, cy + 55),
+        ]
+        for bx1, by1, bx2, by2 in bars:
+            draw.rectangle([bx1, by1, bx2, by2], fill=color)
+        draw.line([(cx - 95, cy + 55), (cx + 95, cy + 55)], fill=color, width=7)
+    elif icon_type == "plus":
+        r = size
+        draw.ellipse([(cx - r, cy - r), (cx + r, cy + r)], outline=color, width=9)
+        draw.line([(cx, cy - 60), (cx, cy + 60)], fill=color, width=12)
+        draw.line([(cx - 60, cy), (cx + 60, cy)], fill=color, width=12)
+    elif icon_type == "minus":
+        r = size
+        draw.ellipse([(cx - r, cy - r), (cx + r, cy + r)], outline=color, width=9)
+        draw.line([(cx - 60, cy), (cx + 60, cy)], fill=color, width=12)
+        draw.line([(cx - 38, cy - 38), (cx + 38, cy - 38)], fill=color, width=7)
+    elif icon_type == "note":
+        draw.rectangle([(cx - 70, cy - 90), (cx + 80, cy + 90)], outline=color, width=7)
+        draw.polygon([(cx + 80, cy - 90), (cx + 80, cy - 45), (cx + 35, cy - 90)], fill=color)
+        for y_off in [-35, 5, 45]:
+            draw.line([(cx - 48, cy + y_off), (cx + 52, cy + y_off)], fill=color, width=7)
+
+
 def upload_image(rich_menu_id: str):
     """สร้างภาพ Rich Menu แบบ programmatic ด้วย Pillow"""
     try:
@@ -56,37 +93,47 @@ def upload_image(rich_menu_id: str):
     except ImportError:
         print("กรุณาติดตั้ง Pillow: pip install Pillow")
         print(f"ข้ามการอัปโหลดภาพ — Rich Menu ID: {rich_menu_id}")
-        print("คุณสามารถอัปโหลดภาพผ่าน LINE OA Manager ทีหลังได้ครับ")
         return
 
+    FONT_DIR = r"C:/Windows/Fonts"
+
+    def load_font(size: int):
+        for name in ["leelawdb.ttf", "leelawad.ttf", "LeelawUI.ttf", "arial.ttf"]:
+            try:
+                return ImageFont.truetype(f"{FONT_DIR}/{name}", size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
     W, H = 2500, 843
-    img = Image.new("RGB", (W, H), color="#1A1A2E")
-    draw = ImageDraw.Draw(img)
-
-    # Grid lines
-    draw.line([(833, 0), (833, H)], fill="#2D2D4E", width=4)
-    draw.line([(1667, 0), (1667, H)], fill="#2D2D4E", width=4)
-
+    # 4 panels — แต่ละช่องกว้าง 625px, center ที่ 312, 937, 1562, 2187
     panels = [
-        (416, "📊", "สรุปเดือนนี้", "#4A90D9"),
-        (1250, "💰", "บันทึกรายรับ", "#27AE60"),
-        (2084, "💸", "บันทึกรายจ่าย", "#E74C3C"),
+        (312,  "chart", "สรุปเดือนนี้",   "#4A90D9"),
+        (937,  "plus",  "บันทึกรายรับ",   "#27AE60"),
+        (1562, "minus", "บันทึกรายจ่าย",  "#E74C3C"),
+        (2187, "note",  "โน้ต & เตือน",   "#F0A500"),
     ]
 
-    try:
-        font_emoji = ImageFont.truetype("seguiemj.ttf", 140)
-        font_text = ImageFont.truetype("THSarabunNew Bold.ttf", 90)
-    except Exception:
-        font_emoji = ImageFont.load_default()
-        font_text = font_emoji
+    img = Image.new("RGB", (W, H), color="#0D1117")
+    draw = ImageDraw.Draw(img)
 
-    for cx, emoji, label, color in panels:
-        draw.rectangle([(cx - 350, 80), (cx + 350, 500)], fill=color, outline=None)
-        draw.text((cx, 200), emoji, font=font_emoji, anchor="mm", fill="white")
-        draw.text((cx, 660), label, font=font_text, anchor="mm", fill="white")
+    # Dividers ระหว่าง 4 panels
+    for x in [625, 1250, 1875]:
+        draw.line([(x, 20), (x, H - 20)], fill="#30363D", width=3)
+
+    font_label = load_font(76)
+    font_sub = load_font(48)
+
+    for cx, icon_type, label, color_hex in panels:
+        rgb = hex_to_rgb(color_hex)
+        draw.rectangle([(cx - 312, 0), (cx + 313, 8)], fill=rgb)
+        draw.ellipse([(cx - 130, 165), (cx + 130, 425)], outline=rgb, width=4)
+        draw_icon(draw, cx, 295, icon_type, rgb, size=85)
+        draw.text((cx, 570), label, font=font_label, anchor="mm", fill="white")
+        draw.text((cx, 700), "แตะเพื่อเลือก", font=font_sub, anchor="mm", fill="#8B949E")
 
     img_path = "richmenu_image.png"
-    img.save(img_path)
+    img.save(img_path, "PNG")
     print(f"สร้างภาพ Rich Menu แล้ว: {img_path}")
 
     with open(img_path, "rb") as f:
