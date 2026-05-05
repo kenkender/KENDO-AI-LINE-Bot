@@ -22,8 +22,8 @@ from dotenv import load_dotenv
 
 from parser import parse_message
 from sheets import (append_transaction, append_note, get_summary,
-                    format_summary_message, get_active_reminders,
-                    cancel_reminder)
+                    format_summary_message, format_quick_summary,
+                    get_active_reminders, cancel_reminder)
 from calendar_service import create_reminder_event, delete_calendar_event
 from scheduler import check_reminders
 
@@ -184,11 +184,14 @@ def handle_message(event: MessageEvent):
                 amount = parsed.get("amount", 0)
                 category = parsed.get("category", "อื่นๆ")
                 note = parsed.get("note", "")
+                summary = get_summary()
+                summary_text = format_quick_summary(summary) if summary["success"] else ""
                 reply(reply_token,
                       f"💸 จดให้แล้วครับ!\n"
                       f"📝 {note}\n"
                       f"💰 {amount:,.2f} บาท\n"
-                      f"📂 หมวด: {category}")
+                      f"📂 หมวด: {category}"
+                      f"{summary_text}")
             else:
                 reply(reply_token, "😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
@@ -197,10 +200,13 @@ def handle_message(event: MessageEvent):
             if success:
                 amount = parsed.get("amount", 0)
                 note = parsed.get("note", "")
+                summary = get_summary()
+                summary_text = format_quick_summary(summary) if summary["success"] else ""
                 reply(reply_token,
                       f"💰 เย่! บันทึกรายรับแล้วครับ\n"
                       f"📝 {note}\n"
-                      f"✅ +{amount:,.2f} บาท")
+                      f"✅ +{amount:,.2f} บาท"
+                      f"{summary_text}")
             else:
                 reply(reply_token, "😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 

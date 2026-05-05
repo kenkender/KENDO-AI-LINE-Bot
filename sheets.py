@@ -86,6 +86,7 @@ def get_summary(month: int = None, year: int = None) -> dict:
         total_income = 0.0
         total_expense = 0.0
         expense_by_category = {}
+        transactions = []
         for record in records:
             timestamp_str = record.get("timestamp", "")
             if not timestamp_str:
@@ -104,15 +105,28 @@ def get_summary(month: int = None, year: int = None) -> dict:
                 amount = 0.0
             if intent == "INCOME":
                 total_income += amount
+                transactions.append({
+                    "type": "INCOME",
+                    "note": record.get("note", ""),
+                    "amount": amount,
+                    "category": record.get("category", "รายได้")
+                })
             elif intent == "EXPENSE":
                 total_expense += amount
                 category = record.get("category", "อื่นๆ")
                 expense_by_category[category] = expense_by_category.get(category, 0.0) + amount
+                transactions.append({
+                    "type": "EXPENSE",
+                    "note": record.get("note", ""),
+                    "amount": amount,
+                    "category": category
+                })
         return {
             "success": True, "month": month, "year": year,
             "total_income": total_income, "total_expense": total_expense,
             "balance": total_income - total_expense,
-            "expense_by_category": expense_by_category
+            "expense_by_category": expense_by_category,
+            "transactions": transactions
         }
     except Exception as e:
         print(f"[sheets.py] get_summary error: {e}")
@@ -140,6 +154,44 @@ def format_summary_message(summary: dict) -> str:
         lines.append("📂 รายจ่ายแยกตามหมวด:")
         for category, amount in sorted(summary["expense_by_category"].items(), key=lambda x: x[1], reverse=True):
             lines.append(f"  • {category}: {amount:,.2f} บาท")
+    return "\n".join(lines)
+
+
+def format_quick_summary(summary: dict) -> str:
+    """สรุปยอดสั้นๆ แสดงต่อท้ายการจดรายการ EXPENSE/INCOME"""
+    thai_months = {
+        1: "ม.ค.", 2: "ก.พ.", 3: "มี.ค.", 4: "เม.ย.",
+        5: "พ.ค.", 6: "มิ.ย.", 7: "ก.ค.", 8: "ส.ค.",
+        9: "ก.ย.", 10: "ต.ค.", 11: "พ.ย.", 12: "ธ.ค."
+    }
+    month_name = thai_months.get(summary["month"], str(summary["month"]))
+    lines = [
+        "",
+        f"─────────────────────",
+        f"📊 สรุปยอด {month_name} {summary['year']}",
+        f"─────────────────────",
+    ]
+
+    transactions = summary.get("transactions", [])
+    if transactions:
+        lines.append("📋 รายการ:")
+        visible = transactions[-10:]
+        hidden = len(transactions) - len(visible)
+        if hidden > 0:
+            lines.append(f"  ⋯ (ย้อนหลัง {hidden} รายการ)")
+        for t in visible:
+            if t["type"] == "INCOME":
+                lines.append(f"  ✅ +{t['amount']:,.0f}  {t['note']}")
+            else:
+                lines.append(f"  💸 -{t['amount']:,.0f}  {t['note']}")
+
+    balance = summary["balance"]
+    lines += [
+        "",
+        f"💰 รายรับ:   {summary['total_income']:,.2f} บาท",
+        f"💸 รายจ่าย:  {summary['total_expense']:,.2f} บาท",
+        f"{'✅' if balance >= 0 else '⚠️'} {'คงเหลือ' if balance >= 0 else 'ติดลบ'}:   {abs(balance):,.2f} บาท",
+    ]
     return "\n".join(lines)
 
 
