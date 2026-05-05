@@ -82,6 +82,18 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 """
 
 
+def _build_history_context(history: list) -> str:
+    """แปลง history เป็นข้อความ context สำหรับใส่ใน prompt"""
+    if not history:
+        return ""
+    lines = ["บริบทการสนทนาก่อนหน้า (ใช้เพื่อเข้าใจ context เท่านั้น):"]
+    for i in range(0, len(history) - 1, 2):
+        user_msg = history[i]["parts"][0]
+        model_msg = history[i + 1]["parts"][0] if i + 1 < len(history) else ""
+        lines.append(f"- ผู้ใช้พูดว่า: \"{user_msg}\" → ระบบแปลได้: {model_msg}")
+    return "\n".join(lines) + "\n\n"
+
+
 def parse_message(user_text: str, history: list = None) -> dict:
     """
     history: list of {"role": "user"|"model", "parts": ["..."]}
@@ -91,7 +103,9 @@ def parse_message(user_text: str, history: list = None) -> dict:
         bangkok_tz = pytz.timezone("Asia/Bangkok")
         now = datetime.now(bangkok_tz)
 
-        prompt = f"""วันเวลาปัจจุบัน: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}
+        # embed history เป็น text ใน prompt แทน start_chat (หลีกเลี่ยง v1beta issue)
+        history_context = _build_history_context(history)
+        prompt = f"""{history_context}วันเวลาปัจจุบัน: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}
 ข้อความจากผู้ใช้: "{user_text}"
 """
         models_to_try = [
@@ -106,9 +120,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     model_name=model_name,
                     system_instruction=SYSTEM_PROMPT
                 )
-                # ใช้ start_chat เพื่อส่ง conversation history ไปด้วย
-                chat = model.start_chat(history=history or [])
-                response = chat.send_message(prompt)
+                response = model.generate_content(prompt)
                 raw_text = response.text.strip()
                 raw_text = re.sub(r"```json|```", "", raw_text).strip()
                 parsed = json.loads(raw_text)
