@@ -135,6 +135,46 @@ async def webhook(request: Request):
     return {"status": "ok"}
 
 
+MENU_PROMPTS = {
+    "รายรับ": (
+        "💰 จะบันทึกรายรับอะไรครับ?\n\n"
+        "พิมพ์มาได้เลย เช่น:\n"
+        "  • เงินเดือน 15000\n"
+        "  • ลูกค้าโอนมา 2000\n"
+        "  • ขายของได้ 500\n"
+        "  • รับโบนัส 3000"
+    ),
+    "รายจ่าย": (
+        "💸 จะบันทึกรายจ่ายอะไรครับ?\n\n"
+        "พิมพ์มาได้เลย เช่น:\n"
+        "  • กินข้าว 80\n"
+        "  • ค่าน้ำมัน 200\n"
+        "  • ชาเย็น 35\n"
+        "  • ค่าไฟ 850"
+    ),
+    "โน้ต": (
+        "📝 จะบันทึกอะไรครับ?\n\n"
+        "โน้ตทั่วไป — พิมพ์ว่า:\n"
+        "  • โน้ต: ต้องซื้อยา\n"
+        "  • จำไว้ว่า ต่อ พรบ เดือนหน้า\n\n"
+        "ตั้งเตือน (มีวันเวลา) — พิมพ์ว่า:\n"
+        "  • เตือนพรุ่งนี้ 9 โมง ประชุม\n"
+        "  • แจ้งเตือน วันศุกร์ 6 โมงเย็น จ่ายค่าเช่า"
+    ),
+    "เตือน": (
+        "⏰ จะตั้งเตือนเรื่องอะไรครับ?\n\n"
+        "พิมพ์มาได้เลย เช่น:\n"
+        "  • เตือนพรุ่งนี้ 9 โมง ประชุม\n"
+        "  • แจ้งเตือน วันศุกร์ 6 โมงเย็น จ่ายค่าเช่า\n"
+        "  • เตือน 25 พ.ค. บ่าย 2 ต่อประกัน\n\n"
+        "รูปแบบเวลา:\n"
+        "  9 โมง = 09:00 | บ่าย 3 = 15:00\n"
+        "  6 โมงเย็น = 18:00 | ทุ่มครึ่ง = 19:30"
+    ),
+    "ช่วยด้วย": None,  # ใช้ get_help_message() แทน
+}
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event: MessageEvent):
     try:
@@ -143,6 +183,12 @@ def handle_message(event: MessageEvent):
         reply_token = event.reply_token
 
         print(f"[handle_message] Received: '{raw_text}' from {user_id}")
+
+        # ── Menu shortcut: ดัก keyword จาก Rich Menu / Quick Reply ──
+        if raw_text in MENU_PROMPTS:
+            prompt_text = MENU_PROMPTS[raw_text] or get_help_message()
+            reply(reply_token, prompt_text, quick_reply=True)
+            return
 
         # ── Step 1: Parse ข้อความด้วย Gemini (พร้อม history) ──
         user_history = conversation_history.get(user_id, [])
