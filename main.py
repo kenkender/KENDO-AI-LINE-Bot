@@ -84,8 +84,9 @@ def reply(reply_token: str, message: str):
         )
 
 @app.get("/")
+@app.head("/")
 def health_check():
-    return {"status": "LINE Finance Bot is running ✅"}
+    return {"status": "KENDO AI Bot is running ✅"}
 
 @app.post("/webhook/verify")
 async def webhook_verify():
