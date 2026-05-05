@@ -61,6 +61,12 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 - SUMMARY  = ขอดูสรุปรายรับรายจ่าย
     ตัวอย่าง: "สรุปเดือนนี้" "ใช้ไปเท่าไหร่" "ดูยอดหน่อย" "เงินเหลือเท่าไหร่"
+    การระบุเดือน:
+      "สรุปเดือนนี้" → summary_month=null, summary_year=null
+      "สรุปเดือนที่แล้ว" → summary_month=(เดือนที่แล้ว), summary_year=(ปีที่ถูกต้อง)
+      "สรุปเดือนมกราคม" → summary_month=1
+      "ดูยอดเดือน 3" → summary_month=3
+      "สรุปเดือนเมษายน 2025" → summary_month=4, summary_year=2025
 
 - CANCEL   = ยกเลิก reminder หรือโน้ต
     ตัวอย่าง: "ยกเลิกเตือน ต่อ พรบ" "ลบนัด ประชุม" "ยกเลิกการแจ้งเตือนทั้งหมด"
@@ -78,6 +84,8 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "category": "string หรือ null",
   "note": "string อธิบายรายการสั้นๆ เป็นภาษาไทยกระชับ",
   "reminder_datetime": "ISO8601 string หรือ null",
+  "summary_month": int (1-12) หรือ null — ใช้เฉพาะ SUMMARY intent เท่านั้น,
+  "summary_year": int (ปี ค.ศ.) หรือ null — ใช้เฉพาะ SUMMARY intent เท่านั้น,
   "confidence": 0.0-1.0
 }
 """

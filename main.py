@@ -10,7 +10,10 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
-    TextMessage
+    TextMessage,
+    QuickReply,
+    QuickReplyItem,
+    MessageAction
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
@@ -72,14 +75,27 @@ def get_help_message() -> str:
         "  • ใช้ไปเท่าไหร่\n\n"
         "พิมพ์มาได้เลยครับ ภาษาพูดปกติก็เข้าใจ 😊")
 
-def reply(reply_token: str, message: str):
+MAIN_QUICK_REPLY = QuickReply(items=[
+    QuickReplyItem(action=MessageAction(label="📊 สรุปเดือนนี้", text="สรุปเดือนนี้")),
+    QuickReplyItem(action=MessageAction(label="💰 รายรับ", text="รายรับ")),
+    QuickReplyItem(action=MessageAction(label="💸 รายจ่าย", text="รายจ่าย")),
+    QuickReplyItem(action=MessageAction(label="⏰ ตั้งเตือน", text="เตือน")),
+    QuickReplyItem(action=MessageAction(label="❓ ช่วยเหลือ", text="ช่วยด้วย")),
+])
+
+
+def reply(reply_token: str, message: str, quick_reply: bool = False):
     """ส่งข้อความตอบกลับไปยัง LINE"""
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
+        msg = TextMessage(
+            text=message,
+            quick_reply=MAIN_QUICK_REPLY if quick_reply else None
+        )
         line_bot_api.reply_message_with_http_info(
             ReplyMessageRequest(
                 reply_token=reply_token,
-                messages=[TextMessage(text=message)]
+                messages=[msg]
             )
         )
 
@@ -191,7 +207,8 @@ def handle_message(event: MessageEvent):
                       f"📝 {note}\n"
                       f"💰 {amount:,.2f} บาท\n"
                       f"📂 หมวด: {category}"
-                      f"{summary_text}")
+                      f"{summary_text}",
+                      quick_reply=True)
             else:
                 reply(reply_token, "😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
@@ -206,7 +223,8 @@ def handle_message(event: MessageEvent):
                       f"💰 เย่! บันทึกรายรับแล้วครับ\n"
                       f"📝 {note}\n"
                       f"✅ +{amount:,.2f} บาท"
-                      f"{summary_text}")
+                      f"{summary_text}",
+                      quick_reply=True)
             else:
                 reply(reply_token, "😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
@@ -293,10 +311,12 @@ def handle_message(event: MessageEvent):
                     reply(reply_token, "\n".join(lines))
 
         elif intent == "SUMMARY":
-            summary = get_summary()
+            summary_month = parsed.get("summary_month")
+            summary_year = parsed.get("summary_year")
+            summary = get_summary(month=summary_month, year=summary_year)
             if summary["success"]:
                 message = format_summary_message(summary)
-                reply(reply_token, message)
+                reply(reply_token, message, quick_reply=True)
             else:
                 reply(reply_token, "❌ ไม่สามารถดึงข้อมูลสรุปได้ กรุณาลองใหม่ครับ")
 
@@ -307,11 +327,13 @@ def handle_message(event: MessageEvent):
                       f"🤔 \"{raw_text}\" — นี่คือรายรับหรือรายจ่ายครับ?\n\n"
                       f"พิมพ์ต่อได้เลย เช่น:\n"
                       f"  • \"รายจ่าย {amount}\"\n"
-                      f"  • \"รายรับ {amount}\"")
+                      f"  • \"รายรับ {amount}\"",
+                      quick_reply=True)
             else:
                 reply(reply_token,
                       f"🤔 งงนิดนึงครับ ลองใหม่ได้เลย!\n\n"
-                      f"{get_help_message()}")
+                      f"{get_help_message()}",
+                      quick_reply=True)
         else:
             reply(reply_token, "🤔 ไม่เข้าใจครับ ลองพิมพ์ใหม่นะ")
 
