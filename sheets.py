@@ -1,0 +1,237 @@
+"""
+sheets.py
+จัดการการอ่านและเขียนข้อมูลลง Google Sheets
+"""
+
+import gspread
+from google.oauth2.service_account import Credentials
+from datetime import datetime
+import pytz
+import os
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
+CREDENTIALS_FILE = "credentials.json"
+
+
+def get_sheet_client():
+    credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if credentials_json:
+        # Render: อ่านจาก environment variable
+        info = json.loads(credentials_json)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        # Local dev: อ่านจากไฟล์ credentials.json
+        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SPREADSHEET_ID)
+
+
+def append_transaction(user_id: str, raw_message: str, parsed: dict, status: str = "OK") -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("transactions")
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        timestamp = datetime.now(bangkok_tz).isoformat()
+        row = [
+            timestamp, user_id, raw_message,
+            parsed.get("intent", ""), parsed.get("category", ""),
+            parsed.get("amount", ""), parsed.get("currency", "THB"),
+            parsed.get("note", ""), "", status
+        ]
+        sheet.append_row(row, value_input_option="USER_ENTERED")
+        return True
+    except Exception as e:
+        print(f"[sheets.py] append_transaction error: {e}")
+        return False
+
+
+def append_note(user_id: str, raw_message: str, parsed: dict, calendar_event_id: str = "", status: str = "OK") -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("notes")
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        timestamp = datetime.now(bangkok_tz).isoformat()
+        row = [
+            timestamp, user_id, raw_message,
+            parsed.get("intent", ""), parsed.get("note", ""),
+            parsed.get("reminder_datetime", ""), calendar_event_id, status
+        ]
+        sheet.append_row(row, value_input_option="USER_ENTERED")
+        return True
+    except Exception as e:
+        print(f"[sheets.py] append_note error: {e}")
+        return False
+
+
+def get_summary(month: int = None, year: int = None) -> dict:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("transactions")
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz)
+        if month is None:
+            month = now.month
+        if year is None:
+            year = now.year
+        records = sheet.get_all_records()
+        total_income = 0.0
+        total_expense = 0.0
+        expense_by_category = {}
+        for record in records:
+            timestamp_str = record.get("timestamp", "")
+            if not timestamp_str:
+                continue
+            try:
+                record_date = datetime.fromisoformat(timestamp_str)
+                if record_date.month != month or record_date.year != year:
+                    continue
+            except ValueError:
+                continue
+            intent = record.get("intent", "")
+            amount = record.get("amount", 0)
+            try:
+                amount = float(amount) if amount else 0.0
+            except (ValueError, TypeError):
+                amount = 0.0
+            if intent == "INCOME":
+                total_income += amount
+            elif intent == "EXPENSE":
+                total_expense += amount
+                category = record.get("category", "อื่นๆ")
+                expense_by_category[category] = expense_by_category.get(category, 0.0) + amount
+        return {
+            "success": True, "month": month, "year": year,
+            "total_income": total_income, "total_expense": total_expense,
+            "balance": total_income - total_expense,
+            "expense_by_category": expense_by_category
+        }
+    except Exception as e:
+        print(f"[sheets.py] get_summary error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def format_summary_message(summary: dict) -> str:
+    thai_months = {
+        1: "มกราคม", 2: "กุมภาพันธ์", 3: "มีนาคม", 4: "เมษายน",
+        5: "พฤษภาคม", 6: "มิถุนายน", 7: "กรกฎาคม", 8: "สิงหาคม",
+        9: "กันยายน", 10: "ตุลาคม", 11: "พฤศจิกายน", 12: "ธันวาคม"
+    }
+    month_name = thai_months.get(summary["month"], str(summary["month"]))
+    balance = summary["balance"]
+    balance_label = "คงเหลือ" if balance >= 0 else "ติดลบ"
+    lines = [
+        f"📊 สรุป{month_name} {summary['year']}",
+        f"",
+        f"💰 รายรับ:  {summary['total_income']:,.2f} บาท",
+        f"💸 รายจ่าย: {summary['total_expense']:,.2f} บาท",
+        f"{'✅' if balance >= 0 else '⚠️'} {balance_label}: {abs(balance):,.2f} บาท",
+    ]
+    if summary["expense_by_category"]:
+        lines.append("")
+        lines.append("📂 รายจ่ายแยกตามหมวด:")
+        for category, amount in sorted(summary["expense_by_category"].items(), key=lambda x: x[1], reverse=True):
+            lines.append(f"  • {category}: {amount:,.2f} บาท")
+    return "\n".join(lines)
+
+
+def get_pending_reminders() -> list:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("notes")
+        records = sheet.get_all_records()
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz)
+        print(f"[sheets] Total records in notes: {len(records)}")
+        if records:
+            print(f"[sheets] Keys: {list(records[0].keys())}")
+        due_reminders = []
+        for i, record in enumerate(records):
+            intent = record.get("intent", "")
+            status = record.get("status", "")
+            reminder_dt_str = record.get("reminder_datetime", "")
+            print(f"[sheets] Row {i+2}: intent={intent}, status={status}, dt={reminder_dt_str}")
+            if intent != "REMINDER" or status != "OK":
+                continue
+            if not reminder_dt_str:
+                continue
+            try:
+                reminder_dt = datetime.fromisoformat(str(reminder_dt_str))
+                diff = (reminder_dt - now).total_seconds()
+                print(f"[sheets] Row {i+2}: diff={diff:.0f}s")
+                if -60 <= diff <= 300:
+                    due_reminders.append({
+                        "row_index": i + 2,
+                        "user_id": record.get("source_user_id", ""),
+                        "note": record.get("note", ""),
+                        "reminder_datetime": reminder_dt_str
+                    })
+            except Exception as e:
+                print(f"[sheets] Row {i+2} parse error: {e}")
+                continue
+        return due_reminders
+    except Exception as e:
+        print(f"[sheets.py] get_pending_reminders error: {e}")
+        return []
+
+
+def mark_reminder_sent(row_index: int) -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("notes")
+        # A=timestamp, B=source_user_id, C=raw_message,
+        # D=intent, E=note, F=reminder_datetime, G=calendar_event_id, H=status
+        sheet.update_cell(row_index, 8, "SENT")
+        return True
+    except Exception as e:
+        print(f"[sheets.py] mark_reminder_sent error: {e}")
+        return False
+    
+def get_active_reminders(user_id: str) -> list:
+    """
+    ดึง REMINDER ที่ยังไม่ได้ส่ง (status=OK) ของ user นั้น
+    """
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("notes")
+        records = sheet.get_all_records()
+
+        active = []
+        for i, record in enumerate(records):
+            if (record.get("source_user_id", "") == user_id and
+                record.get("intent", "") == "REMINDER" and
+                record.get("status", "") == "OK"):
+                active.append({
+                    "row_index": i + 2,
+                    "note": record.get("note", ""),
+                    "reminder_datetime": record.get("reminder_datetime", ""),
+                    "calendar_event_id": record.get("calendar_event_id", "")
+                })
+        return active
+
+    except Exception as e:
+        print(f"[sheets.py] get_active_reminders error: {e}")
+        return []
+
+
+def cancel_reminder(row_index: int) -> bool:
+    """
+    อัปเดต status ของ reminder เป็น CANCELLED
+    """
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("notes")
+        # H = status column
+        sheet.update_cell(row_index, 8, "CANCELLED")
+        return True
+    except Exception as e:
+        print(f"[sheets.py] cancel_reminder error: {e}")
+        return False

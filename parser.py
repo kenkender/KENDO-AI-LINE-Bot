@@ -1,0 +1,158 @@
+"""
+parser.py
+รับข้อความดิบจาก LINE แล้วใช้ Gemini วิเคราะห์ intent และ extract ข้อมูล
+"""
+
+import google.generativeai as genai
+import json
+import re
+import os
+from datetime import datetime
+import pytz
+from dotenv import load_dotenv
+
+load_dotenv()
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+SYSTEM_PROMPT = """
+คุณคือ AI parser ของ KENDO AI ระบบ financial tracker และ note-taker ส่วนตัว
+หน้าที่ของคุณคือ วิเคราะห์ข้อความภาษาไทย (ทั้งแบบทางการและภาษาพูดชีวิตประจำวัน)
+แล้วแปลงเป็น JSON เท่านั้น — ห้ามตอบข้อความอื่นเด็ดขาด
+
+กฎเหล็ก:
+1. ตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่นนำหน้าหรือต่อท้าย
+2. ห้ามคาดเดา amount ถ้าไม่มีตัวเลขในข้อความ ให้ใส่ null
+3. วันเวลาให้แปลงเป็น ISO 8601 เสมอ โดยใช้ timezone Asia/Bangkok (UTC+7)
+4. ถ้าไม่แน่ใจ intent ให้ใช้ UNKNOWN
+5. ภาษาพูดที่บอกเล่าการใช้จ่ายโดยปริยาย → EXPENSE เสมอ ไม่ต้องมีคำว่า "จ่าย" หรือ "ซื้อ"
+6. ภาษาพูดที่บอกว่าได้รับเงินมา → INCOME เสมอ
+
+Intent ที่รองรับ พร้อมตัวอย่างภาษาพูด:
+- EXPENSE  = รายจ่าย
+    ตัวอย่างทางการ: "กินข้าว 50" "ซื้อของ 200 บาท" "จ่ายค่าน้ำ 300"
+    ตัวอย่างภาษาพูด:
+      "หิวข้าวแล้ว ไปกินมา 80" → EXPENSE 80 (อาหาร)
+      "แวะปั๊มมา เติมน้ำมันไป 200" → EXPENSE 200 (เดินทาง)
+      "โดนค่าจอดรถ 30" → EXPENSE 30 (เดินทาง)
+      "ชาเย็นแก้วนึง 35" → EXPENSE 35 (อาหาร)
+      "ไปซื้อยามา ราคา 120" → EXPENSE 120 (สุขภาพ)
+      "ค่ากาแฟ 65" → EXPENSE 65 (อาหาร)
+      "ออกไปกินข้าวเที่ยง 90 บาท" → EXPENSE 90 (อาหาร)
+      "เติมเงินมือถือ 100" → EXPENSE 100 (บิล)
+      "จ่ายค่าไฟเดือนนี้ 850" → EXPENSE 850 (บิล)
+
+- INCOME   = รายรับ
+    ตัวอย่างทางการ: "ได้เงินเดือน 15000" "รับเงินค่าจ้าง 500"
+    ตัวอย่างภาษาพูด:
+      "เงินเดือนออกแล้ว ได้มา 18500" → INCOME 18500
+      "ลูกค้าโอนมาแล้ว 2000" → INCOME 2000
+      "ขายของได้ 350" → INCOME 350
+      "รับโบนัสมา 5000" → INCOME 5000
+      "เพื่อนคืนเงินมา 200" → INCOME 200
+
+- NOTE     = บันทึกทั่วไปที่ไม่มีวันเวลาแจ้งเตือน
+    ตัวอย่าง: "โน้ต: ต้องซื้อยา" "จำไว้ว่า ต้องโทรหาหมอ" "อย่าลืม ต่อ พรบ"
+
+- REMINDER = บันทึกที่มีวันเวลาและต้องการแจ้งเตือน
+    ตัวอย่าง: "เตือนพรุ่งนี้ 9 โมง ต่อ พรบ" "แจ้งเตือนวันศุกร์ 6 โมงเย็น จ่ายค่าเช่า"
+    การแปลงเวลา: "9 โมง" = 09:00, "บ่าย 3" = 15:00, "6 โมงเย็น" = 18:00, "ทุ่มครึ่ง" = 19:30
+
+- SUMMARY  = ขอดูสรุปรายรับรายจ่าย
+    ตัวอย่าง: "สรุปเดือนนี้" "ใช้ไปเท่าไหร่" "ดูยอดหน่อย" "เงินเหลือเท่าไหร่"
+
+- CANCEL   = ยกเลิก reminder หรือโน้ต
+    ตัวอย่าง: "ยกเลิกเตือน ต่อ พรบ" "ลบนัด ประชุม" "ยกเลิกการแจ้งเตือนทั้งหมด"
+
+- UNKNOWN  = ไม่สามารถจำแนกได้ หรือเป็นการทักทายทั่วไป
+
+หมวดหมู่ category ที่อนุญาต (เลือกที่เหมาะสมที่สุด):
+อาหาร, เดินทาง, สุขภาพ, ช้อปปิ้ง, บิล, บันเทิง, รายได้, อื่นๆ
+
+โครงสร้าง JSON ที่ต้องตอบ:
+{
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | UNKNOWN",
+  "amount": float หรือ null,
+  "currency": "THB" หรือ null,
+  "category": "string หรือ null",
+  "note": "string อธิบายรายการสั้นๆ เป็นภาษาไทยกระชับ",
+  "reminder_datetime": "ISO8601 string หรือ null",
+  "confidence": 0.0-1.0
+}
+"""
+
+
+def parse_message(user_text: str, history: list = None) -> dict:
+    """
+    history: list of {"role": "user"|"model", "parts": ["..."]}
+             จาก 10 ข้อความล่าสุดของ user นั้น
+    """
+    try:
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz)
+
+        prompt = f"""วันเวลาปัจจุบัน: {now.strftime('%Y-%m-%d %H:%M:%S %Z')}
+ข้อความจากผู้ใช้: "{user_text}"
+"""
+        models_to_try = [
+            "gemini-1.5-flash",
+            "gemini-1.5-flash-8b",
+        ]
+
+        last_error = None
+        for model_name in models_to_try:
+            try:
+                model = genai.GenerativeModel(
+                    model_name=model_name,
+                    system_instruction=SYSTEM_PROMPT
+                )
+                # ใช้ start_chat เพื่อส่ง conversation history ไปด้วย
+                chat = model.start_chat(history=history or [])
+                response = chat.send_message(prompt)
+                raw_text = response.text.strip()
+                raw_text = re.sub(r"```json|```", "", raw_text).strip()
+                parsed = json.loads(raw_text)
+                print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
+                return {"success": True, "data": parsed}
+
+            except Exception as e:
+                if "429" in str(e) or "quota" in str(e).lower():
+                    print(f"[parser] {model_name} quota exceeded, trying next...")
+                    last_error = e
+                    continue
+                else:
+                    raise e
+
+        return {
+            "success": False,
+            "error": "quota_exceeded",
+            "message": f"Gemini quota หมดทุก model: {str(last_error)}"
+        }
+
+    except json.JSONDecodeError as e:
+        return {
+            "success": False,
+            "error": "parse_error",
+            "message": f"Gemini ตอบกลับในรูปแบบที่ไม่ถูกต้อง: {str(e)}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": "api_error",
+            "message": f"เกิดข้อผิดพลาด: {str(e)}"
+        }
+
+# ทดสอบ
+if __name__ == "__main__":
+    tests = [
+        "กินกะเพรา 60 บาท",
+        "เติมน้ำมัน 150",
+        "เตือนฉันพรุ่งนี้ 9 โมงเช้า ต่อ พรบ มอเตอร์ไซค์",
+        "สรุปรายจ่ายเดือนนี้",
+        "โอน 500",
+        "ได้เงินเดือน 18500",
+    ]
+    for t in tests:
+        result = parse_message(t)
+        print(f"\nInput: {t}")
+        print(f"Output: {json.dumps(result, ensure_ascii=False, indent=2)}")
