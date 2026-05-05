@@ -112,8 +112,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
 
         models_to_try = [
             "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b",
+            "gemini-2.0-flash-lite",
         ]
 
         payload = {
@@ -140,14 +139,24 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     )
 
                 if resp.status_code == 429:
-                    print(f"[parser] {model_name} quota exceeded, trying next...")
+                    print(f"[parser] {model_name} quota exceeded (429), trying next...")
                     last_error = "quota_exceeded"
                     continue
 
                 if resp.status_code == 404:
-                    print(f"[parser] {model_name} not found, trying next...")
+                    print(f"[parser] {model_name} not found (404): {resp.text[:300]}")
                     last_error = "model_not_found"
                     continue
+
+                if resp.status_code == 400:
+                    print(f"[parser] {model_name} bad request (400): {resp.text[:300]}")
+                    last_error = f"bad_request"
+                    continue
+
+                if resp.status_code == 403:
+                    print(f"[parser] AUTH ERROR (403): {resp.text[:300]}")
+                    return {"success": False, "error": "auth_error",
+                            "message": "GEMINI_API_KEY ไม่ถูกต้องหรือไม่มีสิทธิ์"}
 
                 resp.raise_for_status()
 
