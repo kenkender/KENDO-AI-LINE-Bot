@@ -84,9 +84,14 @@ def reply(reply_token: str, message: str):
         )
 
 @app.get("/")
-@app.head("/")
 def health_check():
     return {"status": "KENDO AI Bot is running ✅"}
+
+@app.head("/")
+def health_check_head():
+    # UptimeRobot free plan ส่ง HEAD เท่านั้น — ต้องรองรับแยกต่างหาก
+    from fastapi.responses import Response
+    return Response(status_code=200)
 
 @app.post("/webhook/verify")
 async def webhook_verify():
