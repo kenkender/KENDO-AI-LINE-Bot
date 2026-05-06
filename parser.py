@@ -69,6 +69,11 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 - REMINDER = บันทึกที่มีวันเวลาและต้องการแจ้งเตือน
     ตัวอย่าง: "เตือนพรุ่งนี้ 9 โมง ต่อ พรบ" "แจ้งเตือนวันศุกร์ 6 โมงเย็น จ่ายค่าเช่า"
     การแปลงเวลา: "9 โมง" = 09:00, "บ่าย 3" = 15:00, "6 โมงเย็น" = 18:00, "ทุ่มครึ่ง" = 19:30
+    recurrence = รูปแบบการทำซ้ำ (null = ครั้งเดียว):
+      "daily"        = ทุกวัน เช่น "เตือนทุกวัน 8 โมง กินยา"
+      "weekly:N"     = ทุกวัน N (1=จันทร์ … 7=อาทิตย์) เช่น "เตือนทุกวันจันทร์ 9 โมง ประชุม" → weekly:1
+      "monthly:N"    = ทุกวันที่ N เช่น "เตือนทุกวันที่ 25 บ่าย 2 จ่ายค่าเช่า" → monthly:25
+      reminder_datetime ให้ใส่ครั้งแรกที่จะเกิดขึ้น (ใกล้ที่สุดในอนาคต)
     reminder_extras: ถ้า user ขอให้แนบข้อมูลพิเศษมาด้วยตอนแจ้งเตือน ให้ใส่ใน reminder_extras เป็น comma-separated:
       - "weather:{สถานที่}" เช่น weather:กรุงเทพ, weather:เชียงใหม่
       - "air_quality:{สถานที่}" เช่น air_quality:กรุงเทพ
@@ -146,6 +151,41 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
               "คุณภาพอากาศวันนี้" "อากาศเป็นพิษไหมที่เลย" "ฝุ่นควัน"
     note = ชื่อสถานที่ (ถ้าไม่ระบุให้ใช้ "กรุงเทพ" เป็น default)
 
+- TODAY_EXPENSE = ดูรายรับรายจ่ายวันนี้เท่านั้น
+    ตัวอย่าง: "วันนี้ใช้ไปเท่าไหร่" "ยอดวันนี้" "วันนี้จ่ายอะไรไปบ้าง" "รายการวันนี้" "ค่าใช้จ่ายวันนี้"
+
+- SPLIT_BILL = หารค่าใช้จ่ายกับเพื่อน
+    ตัวอย่าง: "หารกับเพื่อน 3 คน ค่าอาหาร 480" "หาร 480 บาท 4 คน" "หารบิล 600 บาท 3 คน" "แบ่ง 900 สามคน"
+    amount = ยอดรวม, split_count = จำนวนคน (รวมตัวเอง, ต้อง >= 2)
+
+- WATCH_ADD = เพิ่มรายการใน watchlist สิ่งที่อยากดู/เล่น/ฟัง
+    ตัวอย่าง: "อยากดู Dune 3" "เพิ่ม watchlist One Piece" "อยากเล่น Elden Ring" "อยากฟัง Linkin Park" "จด watchlist หนังสือ Atomic Habits"
+    note = ชื่อเรื่อง/เพลง/เกม/หนังสือ
+    category = "หนัง" | "ซีรีส์" | "เพลง" | "เกม" | "หนังสือ" | "อื่นๆ" (เลือกจาก context)
+
+- WATCH_LIST = ดูรายการ watchlist ที่ยังไม่ได้ดู/เล่น/ฟัง
+    ตัวอย่าง: "watchlist มีอะไรบ้าง" "อยากดูอะไรบ้าง" "อยากเล่นเกมอะไร" "รายการที่ยังไม่ได้ดู"
+
+- WATCH_DONE = mark รายการใน watchlist ว่าดู/เล่น/ฟังแล้ว
+    ตัวอย่าง: "ดูแล้ว Dune 3" "เล่นแล้ว Elden Ring" "ฟังแล้ว Linkin Park" "เสร็จแล้ว One Piece"
+    note = ชื่อที่ต้องการ mark
+
+- BILL_ADD = เพิ่มบิลประจำเดือน (recurring bill)
+    ตัวอย่าง: "ตั้งบิล ค่าไฟ 800 บาท ทุกวันที่ 20" "บันทึกบิล ค่าน้ำ 200 วันที่ 15" "บิลประจำ ค่าเน็ต 600 วันที่ 1"
+    note = ชื่อบิล, amount = ยอดบิล, bill_due_day = วันที่ครบกำหนด (1-31)
+
+- BILL_LIST = ดูบิลประจำที่มีอยู่ทั้งหมด
+    ตัวอย่าง: "บิลประจำมีอะไรบ้าง" "ดูบิล" "มีบิลอะไรต้องจ่ายบ้าง" "บิลเดือนนี้"
+
+- BILL_DELETE = ลบบิลประจำ
+    ตัวอย่าง: "ลบบิล ค่าไฟ" "ยกเลิกบิล ค่าน้ำ" "เอาบิล ค่าเน็ต ออก"
+    note = ชื่อบิลที่ต้องการลบ
+
+- BRIEFING_SET = ตั้งค่า morning briefing (ข้อความสรุปเช้า)
+    ตัวอย่าง: "เปิด briefing 7 โมงเช้า" "ตั้ง briefing เชียงใหม่ 6 โมง" "ปิด briefing" "ตั้งเวลา briefing 8 โมง ที่กรุงเทพ"
+    briefing_hour = เวลา 0-23 (null ถ้าต้องการปิด briefing), note = ชื่อเมืองสำหรับอากาศ (null ถ้าไม่ระบุ)
+    "ปิด briefing" → briefing_hour: null
+
 - CHAT     = คำถามทั่วไป ขอคำแนะนำ ทักทาย หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "แปลญี่ปุ่นให้" "คอมช้าทำไง" "แมวกินอะไรได้บ้าง"
               "แนะนำเกมหน่อย" "อยากออกกำลังกายแต่ขี้เกียจ" "วิเคราะห์ข่าวนี้"
@@ -179,7 +219,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -190,6 +230,10 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "response": "string คำตอบสำหรับ CHAT intent เท่านั้น, null สำหรับ intent อื่น",
   "news_query": "string หมวดหรือคำค้นข่าว ใช้เฉพาะ NEWS_THAI และ NEWS_SEARCH เท่านั้น, null สำหรับ intent อื่น",
   "reminder_extras": "string comma-separated extras ใช้เฉพาะ REMINDER intent เมื่อ user ขอข้อมูลพิเศษ เช่น 'weather:กรุงเทพ,air_quality:กรุงเทพ,tasks' — null ถ้าไม่ได้ขอ",
+  "recurrence": "string | null — ใช้เฉพาะ REMINDER: 'daily' | 'weekly:N' | 'monthly:N' | null",
+  "split_count": "int | null — ใช้เฉพาะ SPLIT_BILL: จำนวนคนที่หาร (>= 2)",
+  "bill_due_day": "int (1-31) | null — ใช้เฉพาะ BILL_ADD: วันที่ครบกำหนดในแต่ละเดือน",
+  "briefing_hour": "int (0-23) | null — ใช้เฉพาะ BRIEFING_SET: ชั่วโมงที่ต้องการรับ briefing, null = ปิด",
   "confidence": 0.0-1.0
 }
 """

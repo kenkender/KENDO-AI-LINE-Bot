@@ -63,8 +63,11 @@ def append_note(user_id: str, raw_message: str, parsed: dict, calendar_event_id:
         timestamp = datetime.now(bangkok_tz).isoformat()
         note = parsed.get("note", "")
         extras = parsed.get("reminder_extras", "") or ""
+        recurrence = parsed.get("recurrence", "") or ""
         if extras:
             note = f"{note}\n[EXTRAS:{extras}]"
+        if recurrence:
+            note = f"{note}\n[RECUR:{recurrence}]"
         row = [
             timestamp, user_id, raw_message,
             parsed.get("intent", ""), note,
@@ -517,19 +520,24 @@ def get_pending_reminders() -> list:
                 if -60 <= diff <= 300:
                     raw_note = record.get("note", "")
                     extras_str = ""
-                    m = re.search(r'\r?\n\[EXTRAS:(.*?)\]', raw_note, re.DOTALL)
-                    if m:
-                        extras_str = m.group(1).strip()
-                        display_note = raw_note[:m.start()]
-                    else:
-                        display_note = raw_note
-                    print(f"[sheets] Row {i+2}: extras_str={extras_str!r}, display_note={display_note!r}")
+                    recurrence_str = ""
+                    m_extras = re.search(r'\r?\n\[EXTRAS:(.*?)\]', raw_note, re.DOTALL)
+                    if m_extras:
+                        extras_str = m_extras.group(1).strip()
+                        raw_note = raw_note[:m_extras.start()] + raw_note[m_extras.end():]
+                    m_recur = re.search(r'\r?\n\[RECUR:(.*?)\]', raw_note, re.DOTALL)
+                    if m_recur:
+                        recurrence_str = m_recur.group(1).strip()
+                        raw_note = raw_note[:m_recur.start()] + raw_note[m_recur.end():]
+                    display_note = raw_note.strip()
+                    print(f"[sheets] Row {i+2}: extras={extras_str!r} recur={recurrence_str!r} note={display_note!r}")
                     due_reminders.append({
                         "row_index": i + 2,
                         "user_id": record.get("source_user_id", ""),
                         "note": display_note,
                         "reminder_datetime": reminder_dt_str,
-                        "reminder_extras": extras_str
+                        "reminder_extras": extras_str,
+                        "recurrence": recurrence_str,
                     })
             except Exception as e:
                 print(f"[sheets] Row {i+2} parse error: {e}")
@@ -591,4 +599,355 @@ def cancel_reminder(row_index: int) -> bool:
         return True
     except Exception as e:
         print(f"[sheets.py] cancel_reminder error: {e}")
+        return False
+
+
+# ── TODAY SUMMARY ─────────────────────────────────────────────────────────────
+
+def get_today_summary(user_id: str = None) -> dict:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("transactions")
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz)
+        today_str = now.strftime("%Y-%m-%d")
+        records = sheet.get_all_records()
+        total_income, total_expense = 0.0, 0.0
+        expense_by_category: dict = {}
+        transactions = []
+        for record in records:
+            ts = str(record.get("timestamp", ""))
+            if not ts.startswith(today_str):
+                continue
+            if user_id and record.get("source_user_id", "") != user_id:
+                continue
+            if record.get("status") == "DELETED":
+                continue
+            intent = record.get("intent", "")
+            amount = float(record.get("amount", 0) or 0)
+            if intent == "INCOME":
+                total_income += amount
+                transactions.append({"type": "INCOME", "note": record.get("note", ""), "amount": amount})
+            elif intent == "EXPENSE":
+                total_expense += amount
+                cat = record.get("category", "อื่นๆ")
+                expense_by_category[cat] = expense_by_category.get(cat, 0.0) + amount
+                transactions.append({"type": "EXPENSE", "note": record.get("note", ""), "amount": amount, "category": cat})
+        return {"success": True, "date": today_str, "total_income": total_income,
+                "total_expense": total_expense, "balance": total_income - total_expense,
+                "expense_by_category": expense_by_category, "transactions": transactions}
+    except Exception as e:
+        print(f"[sheets] get_today_summary error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ── USER PREFS (Morning Briefing) ─────────────────────────────────────────────
+
+def _user_prefs_sheet(spreadsheet):
+    return _get_or_create_sheet(
+        spreadsheet, "user_prefs",
+        ["source_user_id", "briefing_hour", "briefing_city", "updated_at"]
+    )
+
+
+def _find_prefs_row(sheet, user_id: str):
+    records = sheet.get_all_records()
+    for i, r in enumerate(records):
+        if r.get("source_user_id") == user_id:
+            return i + 2, r
+    return None, {}
+
+
+def set_briefing(user_id: str, hour, city: str = "") -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _user_prefs_sheet(spreadsheet)
+        row_idx, existing = _find_prefs_row(sheet, user_id)
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+        hour_val = int(hour) if hour is not None else ""
+        city_val = city.strip() or str(existing.get("briefing_city", "") or "กรุงเทพ")
+        if row_idx:
+            sheet.update_cell(row_idx, 2, hour_val)
+            sheet.update_cell(row_idx, 3, city_val)
+            sheet.update_cell(row_idx, 4, now)
+        else:
+            sheet.append_row([user_id, hour_val, city_val, now])
+        return True
+    except Exception as e:
+        print(f"[sheets] set_briefing error: {e}")
+        return False
+
+
+def get_briefing(user_id: str) -> dict:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _user_prefs_sheet(spreadsheet)
+        _, prefs = _find_prefs_row(sheet, user_id)
+        hour_raw = prefs.get("briefing_hour", "")
+        hour = int(hour_raw) if str(hour_raw).strip().isdigit() else None
+        city = str(prefs.get("briefing_city", "") or "กรุงเทพ")
+        return {"hour": hour, "city": city}
+    except Exception as e:
+        print(f"[sheets] get_briefing error: {e}")
+        return {"hour": None, "city": "กรุงเทพ"}
+
+
+def get_all_briefing_users() -> list:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _user_prefs_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        result = []
+        for r in records:
+            hour_raw = r.get("briefing_hour", "")
+            hour = int(hour_raw) if str(hour_raw).strip().isdigit() else None
+            if hour is not None and r.get("source_user_id"):
+                result.append({
+                    "user_id": r.get("source_user_id"),
+                    "hour": hour,
+                    "city": str(r.get("briefing_city", "") or "กรุงเทพ")
+                })
+        return result
+    except Exception as e:
+        print(f"[sheets] get_all_briefing_users error: {e}")
+        return []
+
+
+def get_today_reminders(user_id: str) -> list:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("notes")
+        records = sheet.get_all_records()
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        today_str = datetime.now(bangkok_tz).strftime("%Y-%m-%d")
+        result = []
+        for record in records:
+            if record.get("source_user_id", "") != user_id:
+                continue
+            if record.get("intent", "") != "REMINDER" or record.get("status", "") != "OK":
+                continue
+            dt_str = str(record.get("reminder_datetime", ""))
+            if not dt_str.startswith(today_str):
+                continue
+            raw = record.get("note", "")
+            raw = re.sub(r'\r?\n\[EXTRAS:.*?\]', '', raw, flags=re.DOTALL)
+            raw = re.sub(r'\r?\n\[RECUR:.*?\]', '', raw, flags=re.DOTALL)
+            result.append({"note": raw.strip(), "time": dt_str[11:16]})
+        return result
+    except Exception as e:
+        print(f"[sheets] get_today_reminders error: {e}")
+        return []
+
+
+# ── BILLS ─────────────────────────────────────────────────────────────────────
+
+def _bills_sheet(spreadsheet):
+    return _get_or_create_sheet(
+        spreadsheet, "bills",
+        ["source_user_id", "bill_name", "amount", "due_day", "status", "last_reminded", "created_at"]
+    )
+
+
+def add_bill(user_id: str, name: str, amount: float, due_day: int) -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _bills_sheet(spreadsheet)
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+        sheet.append_row([user_id, name, amount, due_day, "ACTIVE", "", now])
+        return True
+    except Exception as e:
+        print(f"[sheets] add_bill error: {e}")
+        return False
+
+
+def list_bills(user_id: str) -> list:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _bills_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        return [
+            {"row_index": i + 2, "name": r.get("bill_name", ""),
+             "amount": float(r.get("amount", 0) or 0), "due_day": int(r.get("due_day", 0) or 0)}
+            for i, r in enumerate(records)
+            if r.get("source_user_id") == user_id and r.get("status") == "ACTIVE"
+        ]
+    except Exception as e:
+        print(f"[sheets] list_bills error: {e}")
+        return []
+
+
+def delete_bill(user_id: str, keyword: str) -> dict:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _bills_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        kw = keyword.lower()
+        matched = [
+            (i + 2, r) for i, r in enumerate(records)
+            if r.get("source_user_id") == user_id and r.get("status") == "ACTIVE"
+            and kw in r.get("bill_name", "").lower()
+        ]
+        if not matched:
+            return {"success": False}
+        row_idx, r = matched[0]
+        sheet.update_cell(row_idx, 5, "DELETED")
+        return {"success": True, "name": r.get("bill_name", "")}
+    except Exception as e:
+        print(f"[sheets] delete_bill error: {e}")
+        return {"success": False}
+
+
+def get_due_bills() -> list:
+    """คืน bills ที่ต้องแจ้งเตือนวันนี้ (ครบกำหนดวันนี้ หรืออีก 3 วัน)"""
+    import calendar as cal
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _bills_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz)
+        today_day = now.day
+        today_str = now.strftime("%Y-%m-%d")
+        days_in_month = cal.monthrange(now.year, now.month)[1]
+        result = []
+        for i, r in enumerate(records):
+            if r.get("status") != "ACTIVE":
+                continue
+            due_day = int(r.get("due_day", 0) or 0)
+            if not due_day:
+                continue
+            if r.get("last_reminded") == today_str:
+                continue
+            days_until = due_day - today_day
+            if days_until < 0:
+                days_until = (days_in_month - today_day) + due_day
+            if days_until in (0, 3):
+                result.append({
+                    "row_index": i + 2,
+                    "user_id": r.get("source_user_id", ""),
+                    "name": r.get("bill_name", ""),
+                    "amount": float(r.get("amount", 0) or 0),
+                    "due_day": due_day,
+                    "days_until": days_until,
+                })
+        return result
+    except Exception as e:
+        print(f"[sheets] get_due_bills error: {e}")
+        return []
+
+
+def mark_bill_reminded(row_index: int, date_str: str) -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _bills_sheet(spreadsheet)
+        sheet.update_cell(row_index, 6, date_str)
+        return True
+    except Exception as e:
+        print(f"[sheets] mark_bill_reminded error: {e}")
+        return False
+
+
+# ── WATCHLIST ─────────────────────────────────────────────────────────────────
+
+def _watchlist_sheet(spreadsheet):
+    return _get_or_create_sheet(
+        spreadsheet, "watchlist",
+        ["timestamp", "source_user_id", "category", "title", "status"]
+    )
+
+
+def add_watchlist_item(user_id: str, category: str, title: str) -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _watchlist_sheet(spreadsheet)
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+        sheet.append_row([now, user_id, category or "อื่นๆ", title, "PENDING"])
+        return True
+    except Exception as e:
+        print(f"[sheets] add_watchlist_item error: {e}")
+        return False
+
+
+def list_watchlist_items(user_id: str) -> list:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _watchlist_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        return [
+            {"row_index": i + 2, "category": r.get("category", "อื่นๆ"), "title": r.get("title", "")}
+            for i, r in enumerate(records)
+            if r.get("source_user_id") == user_id and r.get("status") == "PENDING"
+        ]
+    except Exception as e:
+        print(f"[sheets] list_watchlist_items error: {e}")
+        return []
+
+
+def done_watchlist_item(user_id: str, keyword: str) -> dict:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _watchlist_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        kw = keyword.lower()
+        matched = [
+            (i + 2, r) for i, r in enumerate(records)
+            if r.get("source_user_id") == user_id and r.get("status") == "PENDING"
+            and kw in r.get("title", "").lower()
+        ]
+        if not matched:
+            return {"success": False}
+        if len(matched) == 1:
+            row_idx, r = matched[0]
+            sheet.update_cell(row_idx, 5, "DONE")
+            return {"success": True, "title": r.get("title", ""), "category": r.get("category", "")}
+        return {"success": False, "ambiguous": [{"title": r.get("title"), "category": r.get("category")} for _, r in matched]}
+    except Exception as e:
+        print(f"[sheets] done_watchlist_item error: {e}")
+        return {"success": False}
+
+
+# ── RECURRING REMINDER ────────────────────────────────────────────────────────
+
+def create_recurring_reminder(user_id: str, display_note: str, current_dt: datetime,
+                               recurrence: str, extras: str = "") -> bool:
+    import calendar as cal
+    from datetime import timedelta
+    try:
+        next_dt = None
+        if recurrence == "daily":
+            next_dt = current_dt + timedelta(days=1)
+        elif recurrence.startswith("weekly:"):
+            target_wd = int(recurrence.split(":")[1]) - 1  # 0=Mon
+            days_ahead = (target_wd - current_dt.weekday()) % 7
+            if days_ahead == 0:
+                days_ahead = 7
+            next_dt = current_dt + timedelta(days=days_ahead)
+        elif recurrence.startswith("monthly:"):
+            target_day = int(recurrence.split(":")[1])
+            if current_dt.month == 12:
+                ny, nm = current_dt.year + 1, 1
+            else:
+                ny, nm = current_dt.year, current_dt.month + 1
+            max_day = cal.monthrange(ny, nm)[1]
+            next_dt = current_dt.replace(year=ny, month=nm, day=min(target_day, max_day))
+        if not next_dt:
+            return False
+        stored_note = display_note
+        if extras:
+            stored_note += f"\n[EXTRAS:{extras}]"
+        stored_note += f"\n[RECUR:{recurrence}]"
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("notes")
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        timestamp = datetime.now(bangkok_tz).isoformat()
+        row = [timestamp, user_id, f"[recurring] {display_note}",
+               "REMINDER", stored_note, next_dt.isoformat(), "", "OK"]
+        sheet.append_row(row, value_input_option="USER_ENTERED")
+        print(f"[sheets] Recurring reminder created: {next_dt.isoformat()}")
+        return True
+    except Exception as e:
+        print(f"[sheets] create_recurring_reminder error: {e}")
         return False
