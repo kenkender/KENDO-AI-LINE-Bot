@@ -366,6 +366,15 @@ def handle_message(event: MessageEvent):
             else:
                 reply(reply_token, "❌ ไม่สามารถดึงข้อมูลสรุปได้ กรุณาลองใหม่ครับ")
 
+        elif intent == "CHAT":
+            response = parsed.get("response", "").strip()
+            if response:
+                reply(reply_token, response, quick_reply=True)
+            else:
+                reply(reply_token,
+                      "🤖 KENDO AI พร้อมช่วยครับ ลองถามใหม่ได้เลย",
+                      quick_reply=True)
+
         elif intent == "UNKNOWN":
             amount = parsed.get("amount")
             if amount:

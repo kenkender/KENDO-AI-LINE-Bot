@@ -71,14 +71,20 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 - CANCEL   = ยกเลิก reminder หรือโน้ต
     ตัวอย่าง: "ยกเลิกเตือน ต่อ พรบ" "ลบนัด ประชุม" "ยกเลิกการแจ้งเตือนทั้งหมด"
 
-- UNKNOWN  = ไม่สามารถจำแนกได้ หรือเป็นการทักทายทั่วไป
+- CHAT     = คำถามทั่วไป, ขอคำแนะนำ, ทักทาย, หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
+    ตัวอย่าง: "สวัสดี" "วันนี้อากาศเป็นยังไง" "ช่วยแปลภาษาอังกฤษหน่อย"
+              "กินอะไรดี" "ขอคำแนะนำหน่อย" "คุณคือใคร" "ทำอะไรได้บ้าง"
+    กฎ: ต้องตอบใน response field เป็นภาษาไทย กระชับ เป็นกันเอง ไม่เกิน 200 คำ
+        ใช้บุคลิก KENDO AI — ผู้ช่วยส่วนตัวที่ฉลาด เป็นมิตร และพร้อมช่วยเสมอ
+
+- UNKNOWN  = ไม่สามารถจำแนกได้
 
 หมวดหมู่ category ที่อนุญาต (เลือกที่เหมาะสมที่สุด):
 อาหาร, เดินทาง, สุขภาพ, ช้อปปิ้ง, บิล, บันเทิง, รายได้, อื่นๆ
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -86,6 +92,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "reminder_datetime": "ISO8601 string หรือ null",
   "summary_month": int (1-12) หรือ null — ใช้เฉพาะ SUMMARY intent เท่านั้น,
   "summary_year": int (ปี ค.ศ.) หรือ null — ใช้เฉพาะ SUMMARY intent เท่านั้น,
+  "response": "string คำตอบสำหรับ CHAT intent เท่านั้น, null สำหรับ intent อื่น",
   "confidence": 0.0-1.0
 }
 """
