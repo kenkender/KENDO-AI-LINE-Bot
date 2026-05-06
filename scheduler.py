@@ -120,8 +120,32 @@ async def check_budget_warnings():
             print(f"[scheduler] budget warning error for {user_id}: {e}")
 
 
-async def fetch_reminder_extras(user_id: str, extras_str: str) -> str:
+def _infer_extras_from_note(note: str) -> str:
+    """Fallback: ถ้า parser ไม่ได้ส่ง reminder_extras มา ให้ตรวจสอบจาก note text แทน"""
+    n = note.lower()
+    parts = []
+
+    weather_kw = ["อากาศ", "weather", "พยากรณ์", "อุณหภูมิ", "ฝนตก", "ร้อน", "หนาว", "ลม"]
+    aq_kw      = ["ฝุ่น", "pm2.5", "pm25", "pm 2.5", "air quality", "คุณภาพอากาศ"]
+    task_kw    = ["task", "checklist", "เช็คลิสต์", "รายการ", "ต้องทำ", "สิ่งที่ต้องทำ"]
+
+    if any(kw in n for kw in weather_kw):
+        parts.append("weather:กรุงเทพ")
+    if any(kw in n for kw in aq_kw):
+        parts.append("air_quality:กรุงเทพ")
+    if any(kw in n for kw in task_kw):
+        parts.append("tasks")
+
+    inferred = ",".join(parts)
+    if inferred:
+        print(f"[scheduler] inferred extras from note: {inferred}")
+    return inferred
+
+
+async def fetch_reminder_extras(user_id: str, extras_str: str, note: str = "") -> str:
     """ดึงข้อมูลพิเศษสำหรับ rich reminder (weather, air_quality, tasks)"""
+    if not extras_str and note:
+        extras_str = _infer_extras_from_note(note)
     if not extras_str:
         return ""
 
@@ -132,17 +156,17 @@ async def fetch_reminder_extras(user_id: str, extras_str: str) -> str:
     parts_out = []
 
     for part in (p.strip() for p in extras_str.split(",")):
+        if not part:
+            continue
         try:
             if part.startswith("weather:"):
                 location = part[8:].strip() or "กรุงเทพ"
                 result = await loop.run_in_executor(None, get_weather, location)
-                if result.get("success"):
-                    parts_out.append(result["message"])
+                parts_out.append(result["message"])
             elif part.startswith("air_quality:"):
                 location = part[12:].strip() or "กรุงเทพ"
                 result = await loop.run_in_executor(None, get_air_quality, location)
-                if result.get("success"):
-                    parts_out.append(result["message"])
+                parts_out.append(result["message"])
             elif part == "tasks":
                 tasks = await loop.run_in_executor(None, list_tasks, user_id)
                 if tasks:
@@ -191,7 +215,7 @@ async def check_reminders():
                 row_index = reminder["row_index"]
                 extras_str = reminder.get("reminder_extras", "")
 
-                extras_content = await fetch_reminder_extras(user_id, extras_str) if extras_str else ""
+                extras_content = await fetch_reminder_extras(user_id, extras_str, note)
 
                 parts = [f"⏰ ถึงเวลาแล้วนะครับ!\n📝 {note}"]
                 if extras_content:
