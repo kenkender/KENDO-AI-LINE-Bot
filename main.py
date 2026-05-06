@@ -34,6 +34,10 @@ from sheets import (
     set_budget, get_budget_status,
     set_savings_goal, get_savings_status,
     add_task, list_tasks, complete_task,
+    get_today_summary,
+    set_briefing, get_briefing,
+    add_bill, list_bills, delete_bill,
+    add_watchlist_item, list_watchlist_items, done_watchlist_item,
 )
 from calendar_service import create_reminder_event, delete_calendar_event
 from scheduler import check_reminders
@@ -96,10 +100,21 @@ def get_help_message() -> str:
         "  • จำไว้: ต่อ พรบ เดือนหน้า\n\n"
         "⏰ ตั้งเตือน:\n"
         "  • เตือนพรุ่งนี้ 9 โมง ประชุม\n"
-        "  • แจ้งเตือน วันศุกร์ 6 โมงเย็น จ่ายค่าเช่า\n\n"
+        "  • เตือนทุกวัน 8 โมง กินยา\n"
+        "  • เตือนทุกวันที่ 25 บ่าย 2 จ่ายค่าเช่า\n\n"
         "📊 ดูสรุป:\n"
-        "  • สรุปเดือนนี้\n"
-        "  • ใช้ไปเท่าไหร่\n\n"
+        "  • วันนี้ใช้ไปเท่าไหร่\n"
+        "  • สรุปเดือนนี้\n\n"
+        "💳 บิลประจำ:\n"
+        "  • ตั้งบิล ค่าไฟ 800 บาท ทุกวันที่ 20\n"
+        "  • บิลประจำมีอะไรบ้าง\n\n"
+        "🎬 Watchlist:\n"
+        "  • อยากดู Dune 3\n"
+        "  • watchlist มีอะไรบ้าง\n\n"
+        "🧾 หารบิล:\n"
+        "  • หารค่าอาหาร 480 บาท 3 คน\n\n"
+        "🌅 Morning Briefing:\n"
+        "  • เปิด briefing 7 โมงเช้า กรุงเทพ\n\n"
         "พิมพ์มาได้เลยครับ ภาษาพูดปกติก็เข้าใจ 😊")
 
 MAIN_QUICK_REPLY = QuickReply(items=[
@@ -331,6 +346,7 @@ def handle_message(event: MessageEvent):
             reminder_dt = parsed.get("reminder_datetime")
             note = parsed.get("note", "")
             extras = parsed.get("reminder_extras", "") or ""
+            recurrence = parsed.get("recurrence", "") or ""
             calendar_event_id = ""
 
             if reminder_dt:
@@ -350,18 +366,29 @@ def handle_message(event: MessageEvent):
                     extras_labels.append("📋 Task checklist")
             extras_line = "\n📦 จะแนบมาด้วย: " + ", ".join(extras_labels) if extras_labels else ""
 
+            _day_th = {1:"จันทร์",2:"อังคาร",3:"พุธ",4:"พฤหัสบดี",5:"ศุกร์",6:"เสาร์",7:"อาทิตย์"}
+            if recurrence == "daily":
+                recur_line = "\n🔁 ทำซ้ำ: ทุกวัน"
+            elif recurrence.startswith("weekly:"):
+                recur_line = f"\n🔁 ทำซ้ำ: ทุกวัน{_day_th.get(int(recurrence.split(':')[1]), '')}"
+            elif recurrence.startswith("monthly:"):
+                recur_line = f"\n🔁 ทำซ้ำ: ทุกวันที่ {recurrence.split(':')[1]}"
+            else:
+                recur_line = ""
+
             if success and calendar_event_id:
                 send(
                       f"⏰ ตั้งเตือนไว้แล้วครับ!\n"
                       f"📝 {note}\n"
                       f"🗓 {reminder_dt}"
-                      f"{extras_line}\n"
+                      f"{recur_line}{extras_line}\n"
                       f"✅ เพิ่มใน Google Calendar แล้วด้วยนะ")
             elif success:
                 send(
-                      f"📝 จดเตือนความจำไว้แล้วครับ\n\"{note}\""
-                      f"{extras_line}\n"
-                      f"⚠️ แต่เพิ่ม Google Calendar ไม่ได้นะ")
+                      f"⏰ ตั้งเตือนไว้แล้วครับ!\n"
+                      f"📝 {note}\n"
+                      f"🗓 {reminder_dt}"
+                      f"{recur_line}{extras_line}")
             else:
                 send("😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
@@ -603,6 +630,153 @@ def handle_message(event: MessageEvent):
             place = (parsed.get("note") or "กรุงเทพ").strip()
             result = get_air_quality(place)
             send(result["message"], quick_reply=True)
+
+        elif intent == "TODAY_EXPENSE":
+            data = get_today_summary(user_id)
+            if not data["success"] or (data["total_income"] == 0 and data["total_expense"] == 0):
+                send("📭 ยังไม่มีรายการวันนี้เลยครับ", quick_reply=True)
+            else:
+                lines = [f"📊 สรุปวันนี้ ({data['date']})\n"]
+                if data["total_income"] > 0:
+                    lines.append(f"💰 รายรับ:   {data['total_income']:,.0f} บาท")
+                if data["total_expense"] > 0:
+                    lines.append(f"💸 รายจ่าย:  {data['total_expense']:,.0f} บาท")
+                balance = data["balance"]
+                lines.append(f"{'✅' if balance >= 0 else '⚠️'} คงเหลือ:   {balance:,.0f} บาท")
+                if data["expense_by_category"]:
+                    lines.append("\n📂 แยกตามหมวด:")
+                    for cat, amt in sorted(data["expense_by_category"].items(), key=lambda x: -x[1]):
+                        lines.append(f"  • {cat}: {amt:,.0f} บาท")
+                send("\n".join(lines), quick_reply=True)
+
+        elif intent == "SPLIT_BILL":
+            amount = parsed.get("amount")
+            split_count = parsed.get("split_count")
+            if not amount or not split_count or int(split_count) <= 0:
+                send("🧾 บอกด้วยนะครับว่าหารเท่าไหร่ กี่คน\nเช่น: \"หารค่าอาหาร 480 บาท 3 คน\"")
+            else:
+                per_person = float(amount) / int(split_count)
+                send(
+                    f"🧾 หารบิล {float(amount):,.0f} บาท ÷ {int(split_count)} คน\n\n"
+                    f"💵 คนละ {per_person:,.2f} บาท",
+                    quick_reply=True)
+
+        elif intent == "WATCH_ADD":
+            title = parsed.get("note", "").strip()
+            category = (parsed.get("category") or "อื่นๆ").strip()
+            if not title:
+                send("🎬 บอกด้วยนะครับว่าอยากดูอะไร\nเช่น: \"อยากดู Dune 3\"")
+            else:
+                add_watchlist_item(user_id, category, title)
+                items = list_watchlist_items(user_id)
+                send(
+                    f"🎬 เพิ่มใน Watchlist แล้วครับ!\n📌 {title}\n\n"
+                    f"มีทั้งหมด {len(items)} รายการใน watchlist",
+                    quick_reply=True)
+
+        elif intent == "WATCH_LIST":
+            items = list_watchlist_items(user_id)
+            if not items:
+                send("🎬 Watchlist ว่างเลยครับ ยังไม่มีรายการ", quick_reply=True)
+            else:
+                lines = [f"🎬 Watchlist ทั้งหมด {len(items)} รายการ\n"]
+                cats: dict = {}
+                for item in items:
+                    cats.setdefault(item["category"], []).append(item["title"])
+                for cat, titles in cats.items():
+                    lines.append(f"📂 {cat}:")
+                    for t in titles:
+                        lines.append(f"  ☐ {t}")
+                lines.append('\nพิมพ์ "ดูแล้ว [ชื่อ]" เมื่อดูเสร็จแล้วนะครับ')
+                send("\n".join(lines), quick_reply=True)
+
+        elif intent == "WATCH_DONE":
+            keyword = parsed.get("note", "").strip()
+            if not keyword:
+                send("✅ บอกด้วยนะครับว่าดูอะไรเสร็จแล้ว")
+            else:
+                result = done_watchlist_item(user_id, keyword)
+                if result.get("success"):
+                    remaining = list_watchlist_items(user_id)
+                    footer = "Watchlist ว่างแล้ว! 🎊" if not remaining else f"ยังมีอีก {len(remaining)} รายการ"
+                    send(
+                        f"✅ เยี่ยม! ดูเสร็จแล้วครับ\n🎬 {result['title']}\n\n{footer}",
+                        quick_reply=True)
+                elif result.get("ambiguous"):
+                    lines = ["🔍 เจอหลายรายการ ระบุให้ชัดขึ้นนิดนึงนะครับ:\n"]
+                    for item in result["ambiguous"]:
+                        lines.append(f"  • {item['title']} ({item['category']})")
+                    send("\n".join(lines))
+                else:
+                    send(f"🔍 ไม่เจอ \"{keyword}\" ใน Watchlist ครับ")
+
+        elif intent == "BILL_ADD":
+            name = parsed.get("note", "").strip()
+            amount = parsed.get("amount")
+            due_day = parsed.get("bill_due_day")
+            if not name or not amount or not due_day:
+                send(
+                    "💳 บอกรายละเอียดบิลด้วยนะครับ\n"
+                    "เช่น: \"ตั้งบิล ค่าไฟ 800 บาท ทุกวันที่ 20\"")
+            else:
+                add_bill(user_id, name, float(amount), int(due_day))
+                send(
+                    f"💳 ตั้งบิลประจำแล้วครับ!\n"
+                    f"📋 {name}\n"
+                    f"💸 {float(amount):,.0f} บาท\n"
+                    f"📅 ครบกำหนดวันที่ {int(due_day)} ของทุกเดือน\n\n"
+                    f"ผมจะแจ้งเตือนก่อน 3 วัน และวันครบกำหนดนะครับ",
+                    quick_reply=True)
+
+        elif intent == "BILL_LIST":
+            bills = list_bills(user_id)
+            if not bills:
+                send(
+                    "💳 ยังไม่มีบิลประจำครับ\n"
+                    "พิมพ์ \"ตั้งบิล ค่าไฟ 800 ทุกวันที่ 20\" ได้เลย",
+                    quick_reply=True)
+            else:
+                lines = [f"💳 บิลประจำทั้งหมด {len(bills)} รายการ\n"]
+                for b in sorted(bills, key=lambda x: x["due_day"]):
+                    lines.append(f"  • {b['name']} — {b['amount']:,.0f} บาท (วันที่ {b['due_day']})")
+                total = sum(b["amount"] for b in bills)
+                lines.append(f"\n💸 รวมต่อเดือน: {total:,.0f} บาท")
+                send("\n".join(lines), quick_reply=True)
+
+        elif intent == "BILL_DELETE":
+            keyword = parsed.get("note", "").strip()
+            if not keyword:
+                send("💳 บอกด้วยนะครับว่าจะลบบิลอะไร\nเช่น: \"ลบบิลค่าไฟ\"")
+            else:
+                result = delete_bill(user_id, keyword)
+                if result.get("success"):
+                    send(f"🗑 ลบบิล \"{result['name']}\" แล้วครับ", quick_reply=True)
+                else:
+                    bills = list_bills(user_id)
+                    if bills:
+                        lines = [f"🔍 ไม่เจอบิล \"{keyword}\" ครับ มีอยู่:\n"]
+                        for b in bills:
+                            lines.append(f"  • {b['name']}")
+                        send("\n".join(lines))
+                    else:
+                        send("💳 ยังไม่มีบิลประจำเลยครับ")
+
+        elif intent == "BRIEFING_SET":
+            briefing_hour = parsed.get("briefing_hour")
+            city = parsed.get("note", "").strip() or "กรุงเทพ"
+            if briefing_hour is None:
+                send(
+                    "🌅 บอกเวลาด้วยนะครับ\n"
+                    "เช่น: \"เปิด morning briefing 7 โมงเช้า กรุงเทพ\"")
+            else:
+                set_briefing(user_id, int(briefing_hour), city)
+                hour_display = f"{int(briefing_hour):02d}:00 น."
+                send(
+                    f"🌅 เปิด Morning Briefing แล้วครับ!\n"
+                    f"⏰ เวลา {hour_display}\n"
+                    f"📍 สถานที่: {city}\n\n"
+                    f"ทุกเช้าจะส่งสรุปอากาศ + ค่าฝุ่น + เตือนวันนี้ให้ครับ",
+                    quick_reply=True)
 
         elif intent == "CHAT":
             response = parsed.get("response", "").strip()

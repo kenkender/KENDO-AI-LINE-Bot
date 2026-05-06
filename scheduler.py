@@ -12,7 +12,8 @@ from dotenv import load_dotenv
 from sheets import (get_pending_reminders, mark_reminder_sent, get_summary,
                     get_all_user_ids, format_summary_message,
                     get_budget_status, get_budget_warn_state, mark_budget_warned,
-                    list_tasks)
+                    list_tasks, get_all_briefing_users, get_today_reminders,
+                    get_due_bills, mark_bill_reminded, create_recurring_reminder)
 from datetime import datetime
 import pytz
 
@@ -188,11 +189,80 @@ async def fetch_reminder_extras(user_id: str, extras_str: str, note: str = "") -
     return "\n\n".join(parts_out)
 
 
+async def send_morning_briefing(user_id: str, city: str):
+    """ส่ง morning briefing: อากาศ + ค่าฝุ่น + เตือนวันนี้"""
+    from weather_service import get_weather
+    from airquality_service import get_air_quality
+
+    loop = asyncio.get_running_loop()
+    parts = ["🌅 Morning Briefing จาก KENDO AI 🤖\n"]
+
+    try:
+        weather = await loop.run_in_executor(None, get_weather, city)
+        parts.append(weather["message"])
+    except Exception as e:
+        print(f"[scheduler] briefing weather error: {e}")
+
+    try:
+        aq = await loop.run_in_executor(None, get_air_quality, city)
+        parts.append(aq["message"])
+    except Exception as e:
+        print(f"[scheduler] briefing aq error: {e}")
+
+    try:
+        reminders = await loop.run_in_executor(None, get_today_reminders, user_id)
+        if reminders:
+            lines = ["⏰ นัดหมายวันนี้:"]
+            for r in reminders:
+                lines.append(f"  • {r['time']} — {r['note']}")
+            parts.append("\n".join(lines))
+        else:
+            parts.append("⏰ ไม่มีนัดหมายวันนี้ครับ")
+    except Exception as e:
+        print(f"[scheduler] briefing reminders error: {e}")
+
+    parts.append("— มีวันที่ดีนะครับ 😊")
+    await send_push_message(user_id, "\n\n".join(parts))
+
+
+async def check_bill_reminders():
+    """แจ้งเตือนบิลที่ครบกำหนดวันนี้ หรืออีก 3 วัน"""
+    bangkok_tz = pytz.timezone("Asia/Bangkok")
+    today_str = datetime.now(bangkok_tz).strftime("%Y-%m-%d")
+    due = get_due_bills()
+    for bill in due:
+        user_id = bill["user_id"]
+        if not user_id:
+            continue
+        days = bill["days_until"]
+        if days == 0:
+            msg = (
+                f"🔔 บิลครบกำหนดวันนี้!\n\n"
+                f"📋 {bill['name']}\n"
+                f"💸 {bill['amount']:,.0f} บาท\n\n"
+                f"— KENDO AI 🤖"
+            )
+        else:
+            msg = (
+                f"⚠️ บิลจะครบกำหนดใน {days} วัน\n\n"
+                f"📋 {bill['name']}\n"
+                f"💸 {bill['amount']:,.0f} บาท\n"
+                f"📅 ครบกำหนดวันที่ {bill['due_day']}\n\n"
+                f"— KENDO AI 🤖"
+            )
+        success = await send_push_message(user_id, msg)
+        if success:
+            mark_bill_reminded(bill["row_index"], today_str)
+            print(f"[scheduler] Bill reminder sent: {bill['name']} → {user_id}")
+
+
 async def check_reminders():
     """Loop หลัก: check ทุก 60 วินาที, ส่ง weekly summary วันอาทิตย์ 20:00, budget warning ทุกชั่วโมง"""
     print("[scheduler] Reminder scheduler started ✅")
     weekly_sent_date = None
     budget_warned_hour = None
+    bill_checked_date = None
+    briefing_sent: dict = {}  # {user_id: date}
 
     while True:
         try:
@@ -212,6 +282,23 @@ async def check_reminders():
                 budget_warned_hour = current_hour
                 await check_budget_warnings()
 
+            # Bill reminders — วันละครั้ง เวลา 09:00
+            if now.hour == 9 and now.minute == 0 and bill_checked_date != now.date():
+                bill_checked_date = now.date()
+                await check_bill_reminders()
+
+            # Morning briefing — ส่งตาม hour ของแต่ละ user
+            if now.minute == 0:
+                try:
+                    briefing_users = get_all_briefing_users()
+                    for bu in briefing_users:
+                        if bu["hour"] == now.hour and briefing_sent.get(bu["user_id"]) != now.date():
+                            briefing_sent[bu["user_id"]] = now.date()
+                            await send_morning_briefing(bu["user_id"], bu["city"])
+                            print(f"[scheduler] Morning briefing sent to {bu['user_id']}")
+                except Exception as e:
+                    print(f"[scheduler] briefing check error: {e}")
+
             due = get_pending_reminders()
             print(f"[scheduler] Found {len(due)} pending reminders")
 
@@ -220,6 +307,7 @@ async def check_reminders():
                 note = reminder["note"]
                 row_index = reminder["row_index"]
                 extras_str = reminder.get("reminder_extras", "")
+                recurrence = reminder.get("recurrence", "")
 
                 extras_content = await fetch_reminder_extras(user_id, extras_str, note)
 
@@ -233,6 +321,15 @@ async def check_reminders():
                 if success:
                     mark_reminder_sent(row_index)
                     print(f"[scheduler] Reminder sent & marked SENT: row {row_index}")
+
+                    if recurrence:
+                        try:
+                            reminder_dt_str = reminder.get("reminder_datetime", "")
+                            reminder_dt = datetime.fromisoformat(reminder_dt_str) if reminder_dt_str else now
+                            create_recurring_reminder(user_id, note, reminder_dt, recurrence, extras_str)
+                            print(f"[scheduler] Recurring reminder created: {recurrence}")
+                        except Exception as e:
+                            print(f"[scheduler] create_recurring_reminder error: {e}")
 
         except Exception as e:
             print(f"[scheduler] check_reminders error: {e}")
