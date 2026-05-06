@@ -267,24 +267,13 @@ def _format_response(articles: list[dict], label: str) -> dict:
         }
 
     lines = [f"📰 {label}ล่าสุด\n"]
-    last_link = ""
     for i, a in enumerate(articles, 1):
-        title   = a.get("title", "").strip()
-        summary = a.get("summary", "").strip()
-        link    = a.get("link", "").strip()
-        source  = a.get("source", "").strip()
-
-        lines.append(f"{i}. {title}")
-        if summary:
-            lines.append(f"   {summary}")
+        title  = a.get("title", "").strip()
+        source = a.get("source", "").strip()
+        line = f"{i}. {title}"
         if source:
-            lines.append(f"   — {source}")
-        lines.append("")
-        if link:
-            last_link = link
-
-    if last_link:
-        lines.append(f"🔗 อ่านเพิ่ม: {last_link}")
+            line += f" — {source}"
+        lines.append(line)
 
     return {"success": True, "message": "\n".join(lines).strip()}
 

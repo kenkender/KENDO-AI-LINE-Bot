@@ -38,6 +38,7 @@ from sheets import (
 from calendar_service import create_reminder_event, delete_calendar_event
 from scheduler import check_reminders
 from news_service import get_thai_news, get_world_news, get_tech_news, search_news
+from weather_service import get_weather
 
 load_dotenv()
 
@@ -571,6 +572,17 @@ def handle_message(event: MessageEvent):
                 send("🔍 บอกด้วยนะครับว่าอยากค้นข่าวเรื่องอะไร\nเช่น \"ข่าวน้ำท่วม\" หรือ \"ข่าวหุ้น\"")
             else:
                 result = search_news(query)
+                send(result["message"], quick_reply=True)
+
+        elif intent == "WEATHER":
+            province = parsed.get("note", "").strip()
+            if not province:
+                send(
+                    "🌏 บอกด้วยนะครับว่าจะดูอากาศที่จังหวัดไหน\n"
+                    "เช่น: \"พยากรณ์อากาศวันนี้ที่เชียงใหม่\""
+                )
+            else:
+                result = get_weather(province)
                 send(result["message"], quick_reply=True)
 
         elif intent == "CHAT":

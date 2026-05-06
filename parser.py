@@ -127,6 +127,11 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
     ตัวอย่าง: "ข่าว [คำค้น]" "หาข่าวเรื่อง [คำค้น]" "มีข่าวอะไรเรื่อง [คำค้น]"
     news_query = คำค้นหา เช่น "น้ำท่วม" "เลือกตั้ง" "crypto" "หุ้น"
 
+- WEATHER  = ขอพยากรณ์อากาศของจังหวัดในไทย
+    ตัวอย่าง: "พยากรณ์อากาศวันนี้ที่เชียงใหม่" "อากาศที่ภูเก็ตเป็นยังไง" "วันนี้ฝนตกไหมที่สมุทรปราการ"
+              "อุณหภูมิที่ขอนแก่นวันนี้" "อากาศกรุงเทพ" "อากาศวันนี้ที่เลย"
+    note = ชื่อจังหวัด เช่น "เชียงใหม่" "ภูเก็ต" "สมุทรปราการ" "กรุงเทพ"
+
 - CHAT     = คำถามทั่วไป ขอคำแนะนำ ทักทาย หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "แปลญี่ปุ่นให้" "คอมช้าทำไง" "แมวกินอะไรได้บ้าง"
               "แนะนำเกมหน่อย" "อยากออกกำลังกายแต่ขี้เกียจ" "วิเคราะห์ข่าวนี้"
@@ -160,7 +165,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
