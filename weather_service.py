@@ -1,6 +1,9 @@
 """
 weather_service.py
-พยากรณ์อากาศรายจังหวัดไทย ใช้ Open-Meteo API (ฟรี ไม่ต้อง API key)
+พยากรณ์อากาศไทย รองรับจังหวัด อำเภอ เขต และสถานที่ทั่วไป
+Layer 1: ตาราง hardcode 77 จังหวัด (เร็ว)
+Layer 2: Nominatim (OpenStreetMap) geocoding (รองรับทุกระดับ)
+Layer 3: Open-Meteo API (ฟรี ไม่ต้อง API key)
 """
 
 import httpx
@@ -9,7 +12,8 @@ from datetime import datetime
 import pytz
 
 _cache: dict = {}
-CACHE_TTL = 30 * 60  # 30 นาที
+CACHE_TTL_WEATHER = 30 * 60   # อากาศ 30 นาที
+CACHE_TTL_GEO     = 24 * 3600  # geocoding 24 ชั่วโมง
 
 
 def _cache_get(key: str):
@@ -19,11 +23,11 @@ def _cache_get(key: str):
     return None
 
 
-def _cache_set(key: str, data):
-    _cache[key] = {"data": data, "expires_at": time.time() + CACHE_TTL}
+def _cache_set(key: str, data, ttl: int = CACHE_TTL_WEATHER):
+    _cache[key] = {"data": data, "expires_at": time.time() + ttl}
 
 
-# ── ฐานข้อมูลพิกัด 77 จังหวัด ──────────────────────────────────────────────
+# ── Layer 1: ตารางพิกัด 77 จังหวัด (ค้นหาได้ทันที) ───────────────────────────
 PROVINCES: dict[str, tuple[float, float]] = {
     "กรุงเทพ": (13.7563, 100.5018),
     "กรุงเทพมหานคร": (13.7563, 100.5018),
@@ -109,10 +113,8 @@ PROVINCES: dict[str, tuple[float, float]] = {
     "เลย": (17.4860, 101.7230),
     "หนองคาย": (17.8782, 102.7415),
     "บึงกาฬ": (18.3609, 103.6466),
-    "นครพนม": (17.4077, 104.7783),
 }
 
-# WMO weather code → (emoji, คำอธิบายไทย)
 WMO_CODES: dict[int, tuple[str, str]] = {
     0:  ("☀️", "ท้องฟ้าแจ่มใส"),
     1:  ("🌤", "ส่วนใหญ่แจ่มใส"),
@@ -138,7 +140,8 @@ WMO_CODES: dict[int, tuple[str, str]] = {
 }
 
 
-def _find_province(name: str) -> tuple[str | None, tuple | None]:
+# ── Layer 1: ค้นหาจากตาราง hardcode ─────────────────────────────────────────
+def _lookup_province(name: str) -> tuple[str | None, tuple | None]:
     name = name.strip()
     if name in PROVINCES:
         return name, PROVINCES[name]
@@ -148,24 +151,72 @@ def _find_province(name: str) -> tuple[str | None, tuple | None]:
     return None, None
 
 
-def get_weather(province: str) -> dict:
-    """ดึงพยากรณ์อากาศวันนี้ของจังหวัดที่ระบุ"""
-    pname, coords = _find_province(province)
+# ── Layer 2: Nominatim geocoding (รองรับอำเภอ/เขต/สถานที่) ──────────────────
+def _geocode(place: str) -> tuple[str | None, tuple | None]:
+    """แปลงชื่อสถานที่ → (display_name, (lat, lon)) ผ่าน Nominatim"""
+    cache_key = f"geo_{place}"
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached["display"], (cached["lat"], cached["lon"])
+
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": place,
+                    "format": "json",
+                    "countrycodes": "th",
+                    "limit": 1,
+                    "accept-language": "th",
+                },
+                headers={"User-Agent": "KENDO-AI-LINE-Bot/1.0"},
+            )
+        if resp.status_code != 200 or not resp.json():
+            return None, None
+
+        result = resp.json()[0]
+        lat = float(result["lat"])
+        lon = float(result["lon"])
+        display = result.get("display_name", place).split(",")[0].strip()
+
+        _cache_set(cache_key, {"display": display, "lat": lat, "lon": lon}, ttl=CACHE_TTL_GEO)
+        return display, (lat, lon)
+
+    except Exception as e:
+        print(f"[weather_service] geocode error: {e}")
+        return None, None
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+def get_weather(place: str) -> dict:
+    """ดึงพยากรณ์อากาศของสถานที่ที่ระบุ (จังหวัด/อำเภอ/เขต/สถานที่)"""
+    place = place.strip()
+
+    # Layer 1: ตาราง hardcode
+    display_name, coords = _lookup_province(place)
+
+    # Layer 2: Nominatim fallback
+    if not coords:
+        display_name, coords = _geocode(place)
+
     if not coords:
         return {
             "success": False,
             "message": (
-                f"❌ ไม่พบข้อมูลจังหวัด \"{province}\" ครับ\n"
-                "ลองพิมพ์ชื่อจังหวัดให้ครบอีกครั้งนะครับ\n"
-                "เช่น: พยากรณ์อากาศวันนี้ที่เชียงใหม่"
+                f"❌ ไม่พบสถานที่ \"{place}\" ครับ\n"
+                "ลองพิมพ์ให้ชัดขึ้น เช่น:\n"
+                "  • อำเภอบางพลี สมุทรปราการ\n"
+                "  • เขตลาดกระบัง กรุงเทพ\n"
+                "  • เกาะสมุย สุราษฎร์ธานี"
             ),
         }
 
     lat, lon = coords
-    cache_key = f"weather_{lat}_{lon}"
+    cache_key = f"weather_{round(lat,3)}_{round(lon,3)}"
     cached = _cache_get(cache_key)
     if cached:
-        return _format_weather(cached, pname)
+        return _format_weather(cached, display_name or place)
 
     try:
         with httpx.Client(timeout=10) as client:
@@ -195,28 +246,27 @@ def get_weather(province: str) -> dict:
             return {"success": False, "message": "❌ ไม่สามารถดึงข้อมูลอากาศได้ครับ"}
 
         data = resp.json()
-        _cache_set(cache_key, data)
-        return _format_weather(data, pname)
+        _cache_set(cache_key, data, ttl=CACHE_TTL_WEATHER)
+        return _format_weather(data, display_name or place)
 
     except Exception as e:
-        print(f"[weather_service] error: {e}")
+        print(f"[weather_service] open-meteo error: {e}")
         return {"success": False, "message": "❌ ดึงข้อมูลพยากรณ์อากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ"}
 
 
-def _format_weather(data: dict, province: str) -> dict:
+def _format_weather(data: dict, place: str) -> dict:
     cur   = data.get("current", {})
     daily = data.get("daily", {})
 
     temp       = cur.get("temperature_2m")
     feels_like = cur.get("apparent_temperature")
     humidity   = cur.get("relative_humidity_2m")
-    rain_now   = cur.get("precipitation_probability", 0)
     wcode      = cur.get("weathercode", 0)
     wind       = cur.get("windspeed_10m")
 
-    temp_max  = (daily.get("temperature_2m_max") or [None])[0]
-    temp_min  = (daily.get("temperature_2m_min") or [None])[0]
-    rain_max  = (daily.get("precipitation_probability_max") or [0])[0]
+    temp_max = (daily.get("temperature_2m_max") or [None])[0]
+    temp_min = (daily.get("temperature_2m_min") or [None])[0]
+    rain_max = (daily.get("precipitation_probability_max") or [0])[0]
 
     emoji, desc = WMO_CODES.get(wcode, ("🌡", "ไม่ทราบสภาพอากาศ"))
 
@@ -224,7 +274,7 @@ def _format_weather(data: dict, province: str) -> dict:
     now_str = datetime.now(bkk_tz).strftime("%H:%M น.")
 
     lines = [
-        f"🌏 พยากรณ์อากาศ จ.{province}",
+        f"🌏 พยากรณ์อากาศ {place}",
         f"🕐 ข้อมูล ณ {now_str}\n",
         f"{emoji} สภาพอากาศ: {desc}",
         f"🌡 อุณหภูมิ: {temp:.1f}°C",
@@ -240,7 +290,6 @@ def _format_weather(data: dict, province: str) -> dict:
         f"💨 ความเร็วลม: {wind:.1f} km/h",
     ]
 
-    # คำแนะนำ
     tips = []
     if rain_max >= 70:
         tips.append("☂️ ฝนตกหนัก พกร่มด้วยนะครับ!")
@@ -256,8 +305,13 @@ def _format_weather(data: dict, province: str) -> dict:
 
 
 if __name__ == "__main__":
-    tests = ["สมุทรปราการ", "เชียงใหม่", "ภูเก็ต", "ขอนแก่น"]
+    tests = [
+        "สมุทรปราการ",          # hardcode
+        "อำเภอบางพลี สมุทรปราการ",  # geocoding อำเภอ
+        "เขตลาดกระบัง",         # geocoding เขต กทม
+        "เกาะสมุย",             # geocoding สถานที่ท่องเที่ยว
+    ]
     for t in tests:
         r = get_weather(t)
         print(f"\n=== {t} ===")
-        print(r["message"])
+        print("success:", r["success"])
