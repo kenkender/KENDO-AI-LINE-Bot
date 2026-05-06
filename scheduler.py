@@ -152,23 +152,27 @@ async def fetch_reminder_extras(user_id: str, extras_str: str, note: str = "") -
     from weather_service import get_weather
     from airquality_service import get_air_quality
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     parts_out = []
 
     for part in (p.strip() for p in extras_str.split(",")):
         if not part:
             continue
+        print(f"[scheduler] fetching extra: {part!r}")
         try:
             if part.startswith("weather:"):
                 location = part[8:].strip() or "กรุงเทพ"
                 result = await loop.run_in_executor(None, get_weather, location)
+                print(f"[scheduler] weather result success={result.get('success')}")
                 parts_out.append(result["message"])
             elif part.startswith("air_quality:"):
                 location = part[12:].strip() or "กรุงเทพ"
                 result = await loop.run_in_executor(None, get_air_quality, location)
+                print(f"[scheduler] air_quality result success={result.get('success')}")
                 parts_out.append(result["message"])
             elif part == "tasks":
                 tasks = await loop.run_in_executor(None, list_tasks, user_id)
+                print(f"[scheduler] tasks count={len(tasks)}")
                 if tasks:
                     lines = ["📋 Task ที่ต้องทำ:"]
                     for t in tasks:
@@ -177,7 +181,9 @@ async def fetch_reminder_extras(user_id: str, extras_str: str, note: str = "") -
                 else:
                     parts_out.append("📋 ไม่มี task ค้างอยู่ครับ")
         except Exception as e:
+            import traceback
             print(f"[scheduler] fetch_extras error ({part}): {e}")
+            traceback.print_exc()
 
     return "\n\n".join(parts_out)
 

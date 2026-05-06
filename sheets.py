@@ -4,6 +4,7 @@ sheets.py
 """
 
 import gspread
+import re
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pytz
@@ -516,12 +517,13 @@ def get_pending_reminders() -> list:
                 if -60 <= diff <= 300:
                     raw_note = record.get("note", "")
                     extras_str = ""
-                    if "\n[EXTRAS:" in raw_note:
-                        note_part, extras_part = raw_note.split("\n[EXTRAS:", 1)
-                        extras_str = extras_part.rstrip("]")
-                        display_note = note_part
+                    m = re.search(r'\r?\n\[EXTRAS:(.*?)\]', raw_note, re.DOTALL)
+                    if m:
+                        extras_str = m.group(1).strip()
+                        display_note = raw_note[:m.start()]
                     else:
                         display_note = raw_note
+                    print(f"[sheets] Row {i+2}: extras_str={extras_str!r}, display_note={display_note!r}")
                     due_reminders.append({
                         "row_index": i + 2,
                         "user_id": record.get("source_user_id", ""),
