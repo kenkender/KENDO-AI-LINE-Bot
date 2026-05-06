@@ -1,7 +1,9 @@
-"""
+﻿"""
 main.py
 FastAPI webhook รับข้อความจาก LINE แล้ว route ไปยัง service ที่เหมาะสม
 """
+
+import re
 
 from fastapi import FastAPI, Request, HTTPException
 from linebot.v3 import WebhookHandler
@@ -42,6 +44,22 @@ load_dotenv()
 # format: {user_id: [{"role": "user"|"model", "parts": ["..."]}, ...]}
 conversation_history: dict = {}
 MAX_HISTORY_PAIRS = 10  # จำนวน message pairs (user+model) ที่จำ
+
+user_name_cache: dict = {}
+
+
+def get_user_name(user_id: str) -> str:
+    if user_id in user_name_cache:
+        return user_name_cache[user_id]
+    try:
+        with ApiClient(configuration) as api_client:
+            profile = MessagingApi(api_client).get_profile(user_id)
+            name = profile.display_name or ""
+            user_name_cache[user_id] = name
+            return name
+    except Exception as e:
+        print(f"[main] get_user_name error: {e}")
+        return ""
 
 
 @asynccontextmanager
@@ -93,8 +111,10 @@ MAIN_QUICK_REPLY = QuickReply(items=[
 ])
 
 
-def reply(reply_token: str, message: str, quick_reply: bool = False):
+def reply(reply_token: str, message: str, quick_reply: bool = False, name: str = ""):
     """ส่งข้อความตอบกลับไปยัง LINE"""
+    if name:
+        message = re.sub(r"ครับ(?=[!\n\".]|$)", f"ครับ {name}", message)
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         msg = TextMessage(
@@ -193,6 +213,10 @@ def handle_message(event: MessageEvent):
         user_id = event.source.user_id
         raw_text = event.message.text.strip()
         reply_token = event.reply_token
+        name = get_user_name(user_id)
+
+        def send(message, quick_reply=False):
+            reply(reply_token, message, quick_reply=quick_reply, name=name)
 
         print(f"[handle_message] Received: '{raw_text}' from {user_id}")
 
@@ -200,11 +224,11 @@ def handle_message(event: MessageEvent):
         if raw_text in MENU_PROMPTS:
             prompt_text = MENU_PROMPTS[raw_text]
             if prompt_text == "HELP":
-                reply(reply_token, get_help_message(), quick_reply=True)
+                send(get_help_message(), quick_reply=True)
                 return
             elif prompt_text is not None:
                 # มี prompt สำเร็จรูป → ตอบกลับแล้วรอ user พิมพ์ต่อ
-                reply(reply_token, prompt_text, quick_reply=True)
+                send(prompt_text, quick_reply=True)
                 return
             # prompt_text = None → ส่งต่อให้ parser จัดการตามปกติ
 
@@ -215,11 +239,11 @@ def handle_message(event: MessageEvent):
 
         if not result["success"]:
             if result.get("error") == "quota_exceeded":
-                reply(reply_token,
+                send(
                     "⚠️ AI ใช้งานเกิน limit แป๊บนึงนะครับ\n"
                     "รอสัก 1 นาทีแล้วลองใหม่ได้เลย 🙏")
             else:
-                reply(reply_token,
+                send(
                     "😅 ระบบมีปัญหาแป๊บนึง ลองส่งใหม่อีกทีนะครับ")
             return
 
@@ -242,7 +266,7 @@ def handle_message(event: MessageEvent):
 
         # ── Confidence Check ──
         if confidence < 0.7 and intent not in ["SUMMARY"]:
-            reply(reply_token,
+            send(
                   f"🤔 งงนิดนึงครับ ลองพิมพ์ใหม่ได้เลย\n"
                   f"(ความมั่นใจ: {int(confidence*100)}%)\n\n"
                   f"{get_help_message()}")
@@ -250,7 +274,7 @@ def handle_message(event: MessageEvent):
 
         # ── Amount Check สำหรับ EXPENSE/INCOME ──
         if intent in ["EXPENSE", "INCOME"] and not parsed.get("amount"):
-            reply(reply_token,
+            send(
                   f"💬 บอกจำนวนเงินด้วยนะครับ\n\n"
                   f"เช่น:\n"
                   f"  • \"{'กินข้าว 80' if intent == 'EXPENSE' else 'ได้เงินเดือน 15000'}\"\n"
@@ -266,7 +290,7 @@ def handle_message(event: MessageEvent):
                 note = parsed.get("note", "")
                 summary = get_summary()
                 summary_text = format_quick_summary(summary) if summary["success"] else ""
-                reply(reply_token,
+                send(
                       f"💸 จดให้แล้วครับ!\n"
                       f"📝 {note}\n"
                       f"💰 {amount:,.2f} บาท\n"
@@ -274,7 +298,7 @@ def handle_message(event: MessageEvent):
                       f"{summary_text}",
                       quick_reply=True)
             else:
-                reply(reply_token, "😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
+                send("😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
         elif intent == "INCOME":
             success = append_transaction(user_id, raw_text, parsed)
@@ -283,22 +307,22 @@ def handle_message(event: MessageEvent):
                 note = parsed.get("note", "")
                 summary = get_summary()
                 summary_text = format_quick_summary(summary) if summary["success"] else ""
-                reply(reply_token,
+                send(
                       f"💰 เย่! บันทึกรายรับแล้วครับ\n"
                       f"📝 {note}\n"
                       f"✅ +{amount:,.2f} บาท"
                       f"{summary_text}",
                       quick_reply=True)
             else:
-                reply(reply_token, "😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
+                send("😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
         elif intent == "NOTE":
             success = append_note(user_id, raw_text, parsed)
             if success:
                 note = parsed.get("note", "")
-                reply(reply_token, f"📝 จดไว้ให้แล้วครับ\n\"{note}\"")
+                send(f"📝 จดไว้ให้แล้วครับ\n\"{note}\"")
             else:
-                reply(reply_token, "😓 บันทึกโน้ตไม่ได้ครับ ลองใหม่นะ")
+                send("😓 บันทึกโน้ตไม่ได้ครับ ลองใหม่นะ")
 
         elif intent == "REMINDER":
             reminder_dt = parsed.get("reminder_datetime")
@@ -313,24 +337,24 @@ def handle_message(event: MessageEvent):
             success = append_note(user_id, raw_text, parsed, calendar_event_id)
 
             if success and calendar_event_id:
-                reply(reply_token,
+                send(
                       f"⏰ ตั้งเตือนไว้แล้วครับ!\n"
                       f"📝 {note}\n"
                       f"🗓 {reminder_dt}\n"
                       f"✅ เพิ่มใน Google Calendar แล้วด้วยนะ")
             elif success:
-                reply(reply_token,
+                send(
                       f"📝 จดเตือนความจำไว้แล้วครับ\n\"{note}\"\n"
                       f"⚠️ แต่เพิ่ม Google Calendar ไม่ได้นะ")
             else:
-                reply(reply_token, "😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
+                send("😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
         elif intent == "CANCEL":
                 keyword = parsed.get("note", "").strip()
                 active = get_active_reminders(user_id)
 
                 if not active:
-                    reply(reply_token,
+                    send(
                         "📭 ไม่มีการแจ้งเตือนที่ค้างอยู่เลยครับ")
                     return
 
@@ -343,7 +367,7 @@ def handle_message(event: MessageEvent):
                             if reminder["calendar_event_id"]:
                                 delete_calendar_event(reminder["calendar_event_id"])
 
-                    reply(reply_token,
+                    send(
                         f"✅ ยกเลิกทั้งหมด {cancelled_count} รายการแล้วครับ!")
                     return
 
@@ -356,14 +380,14 @@ def handle_message(event: MessageEvent):
                     for r in active:
                         lines.append(f"  • {r['note']} ({r['reminder_datetime'][:16].replace('T', ' ')})")
                     lines.append("\nพิมพ์ว่า \"ยกเลิกเตือน [ชื่อ]\" หรือ \"ยกเลิกเตือนทั้งหมด\" นะครับ")
-                    reply(reply_token, "\n".join(lines))
+                    send("\n".join(lines))
 
                 elif len(matched) == 1:
                     r = matched[0]
                     cancel_reminder(r["row_index"])
                     if r["calendar_event_id"]:
                         delete_calendar_event(r["calendar_event_id"])
-                    reply(reply_token,
+                    send(
                         f"✅ ยกเลิกแล้วครับ!\n"
                         f"📝 {r['note']}\n"
                         f"🗓 {r['reminder_datetime'][:16].replace('T', ' ')}")
@@ -372,7 +396,7 @@ def handle_message(event: MessageEvent):
                     lines = [f"🔍 เจอ {len(matched)} รายการที่ตรงกัน ระบุให้ชัดขึ้นนิดนึงนะครับ:\n"]
                     for r in matched:
                         lines.append(f"  • {r['note']} ({r['reminder_datetime'][:16].replace('T', ' ')})")
-                    reply(reply_token, "\n".join(lines))
+                    send("\n".join(lines))
 
         elif intent == "SUMMARY":
             summary_month = parsed.get("summary_month")
@@ -380,37 +404,37 @@ def handle_message(event: MessageEvent):
             summary = get_summary(month=summary_month, year=summary_year)
             if summary["success"]:
                 message = format_summary_message(summary)
-                reply(reply_token, message, quick_reply=True)
+                send(message, quick_reply=True)
             else:
-                reply(reply_token, "❌ ไม่สามารถดึงข้อมูลสรุปได้ กรุณาลองใหม่ครับ")
+                send("❌ ไม่สามารถดึงข้อมูลสรุปได้ กรุณาลองใหม่ครับ")
 
         elif intent == "ANALYZE":
             summary = get_summary()
             if summary["success"]:
                 analysis = analyze_with_ai(summary)
-                reply(reply_token, f"🧠 วิเคราะห์การใช้จ่ายของคุณ\n\n{analysis}", quick_reply=True)
+                send(f"🧠 วิเคราะห์การใช้จ่ายของคุณ\n\n{analysis}", quick_reply=True)
             else:
-                reply(reply_token, "❌ ไม่มีข้อมูลการใช้จ่ายเดือนนี้ครับ")
+                send("❌ ไม่มีข้อมูลการใช้จ่ายเดือนนี้ครับ")
 
         elif intent == "DELETE":
             result = delete_last_transaction(user_id)
             if result["success"]:
                 icon = "💸" if result["intent"] == "EXPENSE" else "💰"
-                reply(reply_token,
+                send(
                       f"🗑 ลบรายการล่าสุดแล้วครับ\n"
                       f"{icon} {result['note']} — {result['amount']:,.2f} บาท",
                       quick_reply=True)
             else:
-                reply(reply_token, "❌ ไม่พบรายการที่จะลบครับ")
+                send("❌ ไม่พบรายการที่จะลบครับ")
 
         elif intent == "SEARCH":
             keyword = parsed.get("note", "").strip()
             if not keyword:
-                reply(reply_token, "🔍 บอกด้วยนะครับว่าจะค้นหาอะไร\nเช่น \"ค้นหากาแฟ\"")
+                send("🔍 บอกด้วยนะครับว่าจะค้นหาอะไร\nเช่น \"ค้นหากาแฟ\"")
             else:
                 results = search_transactions(user_id, keyword)
                 if not results:
-                    reply(reply_token, f"🔍 ไม่พบรายการที่มีคำว่า \"{keyword}\" ครับ")
+                    send(f"🔍 ไม่พบรายการที่มีคำว่า \"{keyword}\" ครับ")
                 else:
                     total = sum(r["amount"] for r in results)
                     lines = [f"🔍 ผลการค้นหา \"{keyword}\" — {len(results)} รายการ\n"]
@@ -418,14 +442,14 @@ def handle_message(event: MessageEvent):
                         icon = "💸" if r["intent"] == "EXPENSE" else "💰"
                         lines.append(f"  {icon} {r['note']} {r['amount']:,.0f} บาท ({r['timestamp']})")
                     lines.append(f"\nรวม: {total:,.2f} บาท")
-                    reply(reply_token, "\n".join(lines), quick_reply=True)
+                    send("\n".join(lines), quick_reply=True)
 
         elif intent == "BUDGET":
             amount = parsed.get("amount")
             if amount:
                 set_budget(user_id, float(amount))
                 status = get_budget_status(user_id)
-                reply(reply_token,
+                send(
                       f"✅ ตั้งงบประมาณเดือนนี้แล้วครับ\n"
                       f"💼 งบ:     {status['budget']:,.2f} บาท\n"
                       f"💸 ใช้ไป:  {status['expense']:,.2f} บาท\n"
@@ -434,12 +458,12 @@ def handle_message(event: MessageEvent):
             else:
                 status = get_budget_status(user_id)
                 if status["budget"] == 0:
-                    reply(reply_token,
+                    send(
                           "📊 ยังไม่ได้ตั้งงบประมาณครับ\nพิมพ์ว่า \"ตั้งงบ 8000\" ได้เลย")
                 else:
                     pct = (status["expense"] / status["budget"] * 100) if status["budget"] > 0 else 0
                     bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
-                    reply(reply_token,
+                    send(
                           f"💼 งบประมาณเดือนนี้\n\n"
                           f"งบ:    {status['budget']:,.2f} บาท\n"
                           f"ใช้ไป: {status['expense']:,.2f} บาท ({pct:.1f}%)\n"
@@ -452,7 +476,7 @@ def handle_message(event: MessageEvent):
             if amount:
                 set_savings_goal(user_id, float(amount))
                 status = get_savings_status(user_id)
-                reply(reply_token,
+                send(
                       f"🎯 ตั้งเป้าออมแล้วครับ!\n"
                       f"🎯 เป้า:  {status['goal']:,.2f} บาท\n"
                       f"💰 ออมได้: {status['saved']:,.2f} บาท\n"
@@ -461,13 +485,13 @@ def handle_message(event: MessageEvent):
             else:
                 status = get_savings_status(user_id)
                 if status["goal"] == 0:
-                    reply(reply_token,
+                    send(
                           "🎯 ยังไม่ได้ตั้งเป้าออมครับ\nพิมพ์ว่า \"ตั้งเป้าออม 3000\" ได้เลย")
                 else:
                     pct = (status["saved"] / status["goal"] * 100) if status["goal"] > 0 else 0
                     bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
                     savings_footer = "🎉 ถึงเป้าแล้ว!" if status["remaining"] <= 0 else f"📌 ขาดอีก {status['remaining']:,.2f} บาท"
-                    reply(reply_token,
+                    send(
                           f"🎯 เป้าหมายการออมเดือนนี้\n\n"
                           f"เป้า:   {status['goal']:,.2f} บาท\n"
                           f"ออมได้: {status['saved']:,.2f} บาท ({pct:.1f}%)\n"
@@ -478,11 +502,11 @@ def handle_message(event: MessageEvent):
         elif intent == "TASK_ADD":
             task = parsed.get("note", "").strip()
             if not task:
-                reply(reply_token, "📋 บอกด้วยนะครับว่าจะเพิ่ม task อะไร")
+                send("📋 บอกด้วยนะครับว่าจะเพิ่ม task อะไร")
             else:
                 add_task(user_id, task)
                 tasks = list_tasks(user_id)
-                reply(reply_token,
+                send(
                       f"✅ เพิ่ม task แล้วครับ!\n📋 {task}\n\n"
                       f"มี task ค้างอยู่ {len(tasks)} รายการ",
                       quick_reply=True)
@@ -490,13 +514,13 @@ def handle_message(event: MessageEvent):
         elif intent == "TASK_DONE":
             keyword = parsed.get("note", "").strip()
             if not keyword:
-                reply(reply_token, "✅ บอกด้วยนะครับว่า task ไหนเสร็จแล้ว")
+                send("✅ บอกด้วยนะครับว่า task ไหนเสร็จแล้ว")
             else:
                 result = complete_task(user_id, keyword)
                 if result.get("success"):
                     remaining = list_tasks(user_id)
                     task_footer = "ไม่มี task ค้างแล้ว! 🎊" if not remaining else f"ยังมีอีก {len(remaining)} รายการ"
-                    reply(reply_token,
+                    send(
                           f"🎉 เยี่ยมมาก! ทำเสร็จแล้วครับ\n✅ {result['task']}\n\n"
                           f"{task_footer}",
                           quick_reply=True)
@@ -504,54 +528,54 @@ def handle_message(event: MessageEvent):
                     lines = ["🔍 เจอหลายรายการ ระบุให้ชัดขึ้นนิดนึงนะครับ:\n"]
                     for t in result["ambiguous"]:
                         lines.append(f"  • {t}")
-                    reply(reply_token, "\n".join(lines))
+                    send("\n".join(lines))
                 else:
                     pending = result.get("pending", [])
                     if pending:
                         lines = [f"🔍 ไม่เจอ task \"{keyword}\" ครับ มีอยู่:\n"]
                         for t in pending:
                             lines.append(f"  • {t}")
-                        reply(reply_token, "\n".join(lines))
+                        send("\n".join(lines))
                     else:
-                        reply(reply_token, "📭 ไม่มี task ค้างอยู่เลยครับ")
+                        send("📭 ไม่มี task ค้างอยู่เลยครับ")
 
         elif intent == "TASK_LIST":
             tasks = list_tasks(user_id)
             if not tasks:
-                reply(reply_token, "🎊 ไม่มี task ค้างอยู่เลยครับ! ว่างสบายใจ 😊",
+                send("🎊 ไม่มี task ค้างอยู่เลยครับ! ว่างสบายใจ 😊",
                       quick_reply=True)
             else:
                 lines = [f"📋 Task ที่ยังค้างอยู่ {len(tasks)} รายการ\n"]
                 for i, t in enumerate(tasks, 1):
                     lines.append(f"  {i}. {t['task']} ({t['timestamp']})")
                 lines.append("\nพิมพ์ \"เสร็จแล้ว [ชื่อ task]\" เมื่อทำเสร็จนะครับ")
-                reply(reply_token, "\n".join(lines), quick_reply=True)
+                send("\n".join(lines), quick_reply=True)
 
         elif intent == "CHAT":
             response = parsed.get("response", "").strip()
             if response:
-                reply(reply_token, response, quick_reply=True)
+                send(response, quick_reply=True)
             else:
-                reply(reply_token,
+                send(
                       "🤖 KENDO AI พร้อมช่วยครับ ลองถามใหม่ได้เลย",
                       quick_reply=True)
 
         elif intent == "UNKNOWN":
             amount = parsed.get("amount")
             if amount:
-                reply(reply_token,
+                send(
                       f"🤔 \"{raw_text}\" — นี่คือรายรับหรือรายจ่ายครับ?\n\n"
                       f"พิมพ์ต่อได้เลย เช่น:\n"
                       f"  • \"รายจ่าย {amount}\"\n"
                       f"  • \"รายรับ {amount}\"",
                       quick_reply=True)
             else:
-                reply(reply_token,
+                send(
                       f"🤔 งงนิดนึงครับ ลองใหม่ได้เลย!\n\n"
                       f"{get_help_message()}",
                       quick_reply=True)
         else:
-            reply(reply_token, "🤔 ไม่เข้าใจครับ ลองพิมพ์ใหม่นะ")
+            send("🤔 ไม่เข้าใจครับ ลองพิมพ์ใหม่นะ")
 
     except Exception as e:
         print(f"[handle_message] CRITICAL ERROR: {e}")
