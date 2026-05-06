@@ -130,7 +130,19 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 - WEATHER  = ขอพยากรณ์อากาศของจังหวัดในไทย
     ตัวอย่าง: "พยากรณ์อากาศวันนี้ที่เชียงใหม่" "อากาศที่ภูเก็ตเป็นยังไง" "วันนี้ฝนตกไหมที่สมุทรปราการ"
               "อุณหภูมิที่ขอนแก่นวันนี้" "อากาศกรุงเทพ" "อากาศวันนี้ที่เลย"
-    note = ชื่อจังหวัด เช่น "เชียงใหม่" "ภูเก็ต" "สมุทรปราการ" "กรุงเทพ"
+    note = ชื่อสถานที่ เช่น "เชียงใหม่" "ภูเก็ต" "อำเภอบางพลี สมุทรปราการ"
+
+- AIR_QUALITY = ขอดูค่าฝุ่น PM2.5 หรือคุณภาพอากาศ
+    ตัวอย่าง: "ค่าฝุ่นวันนี้ที่เชียงใหม่" "pm2.5 กรุงเทพ" "ฝุ่นที่สมุทรปราการเป็นยังไง"
+              "คุณภาพอากาศวันนี้" "อากาศเป็นพิษไหมที่เลย" "ฝุ่นควัน"
+    note = ชื่อสถานที่ (ถ้าไม่ระบุให้ใช้ "กรุงเทพ" เป็น default)
+
+- TREND    = ขอดูประเด็นร้อน/trending วันนี้
+    ตัวอย่าง: "trending วันนี้" "ประเด็นร้อนวันนี้" "กระแสไทยวันนี้"
+              "X trending วันนี้" "twitter ติดเทรนด์อะไร" "tiktok กระแสวันนี้"
+              "viral วันนี้" "hashtag ดังวันนี้"
+    note = platform ที่ต้องการ: "x" | "tiktok" | "general" (default = "general")
+           ถ้าพูดถึง twitter/X ให้ใส่ "x", tiktok ให้ใส่ "tiktok", อื่นๆ ให้ใส่ "general"
 
 - CHAT     = คำถามทั่วไป ขอคำแนะนำ ทักทาย หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "แปลญี่ปุ่นให้" "คอมช้าทำไง" "แมวกินอะไรได้บ้าง"
@@ -165,7 +177,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TREND | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
