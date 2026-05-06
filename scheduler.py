@@ -11,7 +11,8 @@ import httpx
 from dotenv import load_dotenv
 from sheets import (get_pending_reminders, mark_reminder_sent, get_summary,
                     get_all_user_ids, format_summary_message,
-                    get_budget_status, get_budget_warn_state, mark_budget_warned)
+                    get_budget_status, get_budget_warn_state, mark_budget_warned,
+                    list_tasks)
 from datetime import datetime
 import pytz
 
@@ -119,6 +120,44 @@ async def check_budget_warnings():
             print(f"[scheduler] budget warning error for {user_id}: {e}")
 
 
+async def fetch_reminder_extras(user_id: str, extras_str: str) -> str:
+    """ดึงข้อมูลพิเศษสำหรับ rich reminder (weather, air_quality, tasks)"""
+    if not extras_str:
+        return ""
+
+    from weather_service import get_weather
+    from airquality_service import get_air_quality
+
+    loop = asyncio.get_event_loop()
+    parts_out = []
+
+    for part in (p.strip() for p in extras_str.split(",")):
+        try:
+            if part.startswith("weather:"):
+                location = part[8:].strip() or "กรุงเทพ"
+                result = await loop.run_in_executor(None, get_weather, location)
+                if result.get("success"):
+                    parts_out.append(result["message"])
+            elif part.startswith("air_quality:"):
+                location = part[12:].strip() or "กรุงเทพ"
+                result = await loop.run_in_executor(None, get_air_quality, location)
+                if result.get("success"):
+                    parts_out.append(result["message"])
+            elif part == "tasks":
+                tasks = await loop.run_in_executor(None, list_tasks, user_id)
+                if tasks:
+                    lines = ["📋 Task ที่ต้องทำ:"]
+                    for t in tasks:
+                        lines.append(f"  ☐ {t['task']}")
+                    parts_out.append("\n".join(lines))
+                else:
+                    parts_out.append("📋 ไม่มี task ค้างอยู่ครับ")
+        except Exception as e:
+            print(f"[scheduler] fetch_extras error ({part}): {e}")
+
+    return "\n\n".join(parts_out)
+
+
 async def check_reminders():
     """Loop หลัก: check ทุก 60 วินาที, ส่ง weekly summary วันอาทิตย์ 20:00, budget warning ทุกชั่วโมง"""
     print("[scheduler] Reminder scheduler started ✅")
@@ -150,12 +189,15 @@ async def check_reminders():
                 user_id = reminder["user_id"]
                 note = reminder["note"]
                 row_index = reminder["row_index"]
+                extras_str = reminder.get("reminder_extras", "")
 
-                message = (
-                    f"⏰ ถึงเวลาแล้วนะครับ!\n"
-                    f"📝 {note}\n\n"
-                    f"— KENDO AI 🤖"
-                )
+                extras_content = await fetch_reminder_extras(user_id, extras_str) if extras_str else ""
+
+                parts = [f"⏰ ถึงเวลาแล้วนะครับ!\n📝 {note}"]
+                if extras_content:
+                    parts.append(extras_content)
+                parts.append("— KENDO AI 🤖")
+                message = "\n\n".join(parts)
 
                 success = await send_push_message(user_id, message)
                 if success:

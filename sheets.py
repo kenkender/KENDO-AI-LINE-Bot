@@ -60,9 +60,13 @@ def append_note(user_id: str, raw_message: str, parsed: dict, calendar_event_id:
         sheet = spreadsheet.worksheet("notes")
         bangkok_tz = pytz.timezone("Asia/Bangkok")
         timestamp = datetime.now(bangkok_tz).isoformat()
+        note = parsed.get("note", "")
+        extras = parsed.get("reminder_extras", "") or ""
+        if extras:
+            note = f"{note}\n[EXTRAS:{extras}]"
         row = [
             timestamp, user_id, raw_message,
-            parsed.get("intent", ""), parsed.get("note", ""),
+            parsed.get("intent", ""), note,
             parsed.get("reminder_datetime", ""), calendar_event_id, status
         ]
         sheet.append_row(row, value_input_option="USER_ENTERED")
@@ -510,11 +514,20 @@ def get_pending_reminders() -> list:
                 diff = (reminder_dt - now).total_seconds()
                 print(f"[sheets] Row {i+2}: diff={diff:.0f}s")
                 if -60 <= diff <= 300:
+                    raw_note = record.get("note", "")
+                    extras_str = ""
+                    if "\n[EXTRAS:" in raw_note:
+                        note_part, extras_part = raw_note.split("\n[EXTRAS:", 1)
+                        extras_str = extras_part.rstrip("]")
+                        display_note = note_part
+                    else:
+                        display_note = raw_note
                     due_reminders.append({
                         "row_index": i + 2,
                         "user_id": record.get("source_user_id", ""),
-                        "note": record.get("note", ""),
-                        "reminder_datetime": reminder_dt_str
+                        "note": display_note,
+                        "reminder_datetime": reminder_dt_str,
+                        "reminder_extras": extras_str
                     })
             except Exception as e:
                 print(f"[sheets] Row {i+2} parse error: {e}")

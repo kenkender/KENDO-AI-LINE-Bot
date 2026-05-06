@@ -69,6 +69,15 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 - REMINDER = บันทึกที่มีวันเวลาและต้องการแจ้งเตือน
     ตัวอย่าง: "เตือนพรุ่งนี้ 9 โมง ต่อ พรบ" "แจ้งเตือนวันศุกร์ 6 โมงเย็น จ่ายค่าเช่า"
     การแปลงเวลา: "9 โมง" = 09:00, "บ่าย 3" = 15:00, "6 โมงเย็น" = 18:00, "ทุ่มครึ่ง" = 19:30
+    reminder_extras: ถ้า user ขอให้แนบข้อมูลพิเศษมาด้วยตอนแจ้งเตือน ให้ใส่ใน reminder_extras เป็น comma-separated:
+      - "weather:{สถานที่}" เช่น weather:กรุงเทพ, weather:เชียงใหม่
+      - "air_quality:{สถานที่}" เช่น air_quality:กรุงเทพ
+      - "tasks" = แสดง task checklist ที่ค้างอยู่
+      ตัวอย่าง:
+        "แจ้งเตือนพรุ่งนี้ 8 โมง รายงานอากาศและฝุ่น pm2.5" → reminder_extras: "weather:กรุงเทพ,air_quality:กรุงเทพ"
+        "เตือนวันศุกร์ 7 โมงเช้า อากาศที่เชียงใหม่และ task วันนี้" → reminder_extras: "weather:เชียงใหม่,air_quality:เชียงใหม่,tasks"
+        "แจ้งเตือน 9 โมง ดูรายการที่ต้องทำ" → reminder_extras: "tasks"
+        "เตือนพรุ่งนี้ 10 โมง ประชุม" (ไม่ขอข้อมูลพิเศษ) → reminder_extras: null
 
 - SUMMARY  = ขอดูสรุปรายรับรายจ่าย
     ตัวอย่าง: "สรุปเดือนนี้" "ใช้ไปเท่าไหร่" "ดูยอดหน่อย" "เงินเหลือเท่าไหร่"
@@ -180,6 +189,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "summary_year": int (ปี ค.ศ.) หรือ null — ใช้เฉพาะ SUMMARY intent เท่านั้น,
   "response": "string คำตอบสำหรับ CHAT intent เท่านั้น, null สำหรับ intent อื่น",
   "news_query": "string หมวดหรือคำค้นข่าว ใช้เฉพาะ NEWS_THAI และ NEWS_SEARCH เท่านั้น, null สำหรับ intent อื่น",
+  "reminder_extras": "string comma-separated extras ใช้เฉพาะ REMINDER intent เมื่อ user ขอข้อมูลพิเศษ เช่น 'weather:กรุงเทพ,air_quality:กรุงเทพ,tasks' — null ถ้าไม่ได้ขอ",
   "confidence": 0.0-1.0
 }
 """

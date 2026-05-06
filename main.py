@@ -330,6 +330,7 @@ def handle_message(event: MessageEvent):
         elif intent == "REMINDER":
             reminder_dt = parsed.get("reminder_datetime")
             note = parsed.get("note", "")
+            extras = parsed.get("reminder_extras", "") or ""
             calendar_event_id = ""
 
             if reminder_dt:
@@ -339,15 +340,27 @@ def handle_message(event: MessageEvent):
 
             success = append_note(user_id, raw_text, parsed, calendar_event_id)
 
+            extras_labels = []
+            for part in (p.strip() for p in extras.split(",")) if extras else []:
+                if part.startswith("weather:"):
+                    extras_labels.append(f"🌤 อากาศ ({part[8:]})")
+                elif part.startswith("air_quality:"):
+                    extras_labels.append(f"💨 ค่าฝุ่น PM2.5 ({part[12:]})")
+                elif part == "tasks":
+                    extras_labels.append("📋 Task checklist")
+            extras_line = "\n📦 จะแนบมาด้วย: " + ", ".join(extras_labels) if extras_labels else ""
+
             if success and calendar_event_id:
                 send(
                       f"⏰ ตั้งเตือนไว้แล้วครับ!\n"
                       f"📝 {note}\n"
-                      f"🗓 {reminder_dt}\n"
+                      f"🗓 {reminder_dt}"
+                      f"{extras_line}\n"
                       f"✅ เพิ่มใน Google Calendar แล้วด้วยนะ")
             elif success:
                 send(
-                      f"📝 จดเตือนความจำไว้แล้วครับ\n\"{note}\"\n"
+                      f"📝 จดเตือนความจำไว้แล้วครับ\n\"{note}\""
+                      f"{extras_line}\n"
                       f"⚠️ แต่เพิ่ม Google Calendar ไม่ได้นะ")
             else:
                 send("😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
