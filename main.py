@@ -466,12 +466,13 @@ def handle_message(event: MessageEvent):
                 else:
                     pct = (status["saved"] / status["goal"] * 100) if status["goal"] > 0 else 0
                     bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
+                    savings_footer = "🎉 ถึงเป้าแล้ว!" if status["remaining"] <= 0 else f"📌 ขาดอีก {status['remaining']:,.2f} บาท"
                     reply(reply_token,
                           f"🎯 เป้าหมายการออมเดือนนี้\n\n"
                           f"เป้า:   {status['goal']:,.2f} บาท\n"
                           f"ออมได้: {status['saved']:,.2f} บาท ({pct:.1f}%)\n"
                           f"[{bar}]\n"
-                          f"{'🎉 ถึงเป้าแล้ว!' if status['remaining'] <= 0 else f'📌 ขาดอีก {status[\"remaining\"]:,.2f} บาท'}",
+                          f"{savings_footer}",
                           quick_reply=True)
 
         elif intent == "TASK_ADD":
@@ -494,9 +495,10 @@ def handle_message(event: MessageEvent):
                 result = complete_task(user_id, keyword)
                 if result.get("success"):
                     remaining = list_tasks(user_id)
+                    task_footer = "ไม่มี task ค้างแล้ว! 🎊" if not remaining else f"ยังมีอีก {len(remaining)} รายการ"
                     reply(reply_token,
                           f"🎉 เยี่ยมมาก! ทำเสร็จแล้วครับ\n✅ {result['task']}\n\n"
-                          f"{'ไม่มี task ค้างแล้ว! 🎊' if not remaining else f'ยังมีอีก {len(remaining)} รายการ'}",
+                          f"{task_footer}",
                           quick_reply=True)
                 elif result.get("ambiguous"):
                     lines = ["🔍 เจอหลายรายการ ระบุให้ชัดขึ้นนิดนึงนะครับ:\n"]
