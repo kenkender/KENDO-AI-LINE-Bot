@@ -40,7 +40,6 @@ from scheduler import check_reminders
 from news_service import get_thai_news, get_world_news, get_tech_news, search_news
 from weather_service import get_weather
 from airquality_service import get_air_quality
-from trend_service import get_trending
 
 load_dotenv()
 
@@ -590,13 +589,6 @@ def handle_message(event: MessageEvent):
         elif intent == "AIR_QUALITY":
             place = (parsed.get("note") or "กรุงเทพ").strip()
             result = get_air_quality(place)
-            send(result["message"], quick_reply=True)
-
-        elif intent == "TREND":
-            platform = (parsed.get("note") or "general").strip().lower()
-            if platform not in ("x", "tiktok", "general"):
-                platform = "general"
-            result = get_trending(platform)
             send(result["message"], quick_reply=True)
 
         elif intent == "CHAT":

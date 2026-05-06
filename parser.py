@@ -137,13 +137,6 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
               "คุณภาพอากาศวันนี้" "อากาศเป็นพิษไหมที่เลย" "ฝุ่นควัน"
     note = ชื่อสถานที่ (ถ้าไม่ระบุให้ใช้ "กรุงเทพ" เป็น default)
 
-- TREND    = ขอดูประเด็นร้อน/trending วันนี้
-    ตัวอย่าง: "trending วันนี้" "ประเด็นร้อนวันนี้" "กระแสไทยวันนี้"
-              "X trending วันนี้" "twitter ติดเทรนด์อะไร" "tiktok กระแสวันนี้"
-              "viral วันนี้" "hashtag ดังวันนี้"
-    note = platform ที่ต้องการ: "x" | "tiktok" | "general" (default = "general")
-           ถ้าพูดถึง twitter/X ให้ใส่ "x", tiktok ให้ใส่ "tiktok", อื่นๆ ให้ใส่ "general"
-
 - CHAT     = คำถามทั่วไป ขอคำแนะนำ ทักทาย หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "แปลญี่ปุ่นให้" "คอมช้าทำไง" "แมวกินอะไรได้บ้าง"
               "แนะนำเกมหน่อย" "อยากออกกำลังกายแต่ขี้เกียจ" "วิเคราะห์ข่าวนี้"
@@ -177,7 +170,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TREND | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
