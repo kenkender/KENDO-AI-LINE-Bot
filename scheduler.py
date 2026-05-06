@@ -8,7 +8,8 @@ import asyncio
 import os
 import httpx
 from dotenv import load_dotenv
-from sheets import get_pending_reminders, mark_reminder_sent
+from sheets import get_pending_reminders, mark_reminder_sent, get_summary, get_all_user_ids
+from sheets import format_summary_message
 from datetime import datetime
 import pytz
 
@@ -43,15 +44,37 @@ async def send_push_message(user_id: str, message: str) -> bool:
         return False
 
 
+async def send_weekly_summary():
+    """ส่งสรุปรายสัปดาห์ทุกวันอาทิตย์ เวลา 20:00"""
+    user_ids = get_all_user_ids()
+    for user_id in user_ids:
+        try:
+            summary = get_summary()
+            if not summary["success"] or (summary["total_income"] == 0 and summary["total_expense"] == 0):
+                continue
+            msg = "📅 สรุปประจำสัปดาห์ จาก KENDO AI 🤖\n\n" + format_summary_message(summary)
+            await send_push_message(user_id, msg)
+            print(f"[scheduler] Weekly summary sent to {user_id}")
+        except Exception as e:
+            print(f"[scheduler] weekly summary error for {user_id}: {e}")
+
+
 async def check_reminders():
-    """Loop หลัก: check ทุก 60 วินาที"""
+    """Loop หลัก: check ทุก 60 วินาที, ส่ง weekly summary วันอาทิตย์ 20:00"""
     print("[scheduler] Reminder scheduler started ✅")
+    weekly_sent_date = None
 
     while True:
         try:
             bangkok_tz = pytz.timezone("Asia/Bangkok")
             now = datetime.now(bangkok_tz)
             print(f"[scheduler] Checking at: {now.isoformat()}")
+
+            # Weekly summary — วันอาทิตย์ (weekday=6) เวลา 20:00-20:01
+            if now.weekday() == 6 and now.hour == 20 and now.minute == 0:
+                if weekly_sent_date != now.date():
+                    weekly_sent_date = now.date()
+                    await send_weekly_summary()
 
             due = get_pending_reminders()
             print(f"[scheduler] Found {len(due)} pending reminders")

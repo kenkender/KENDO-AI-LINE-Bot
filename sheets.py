@@ -195,6 +195,242 @@ def format_quick_summary(summary: dict) -> str:
     return "\n".join(lines)
 
 
+def _get_or_create_sheet(spreadsheet, name: str, headers: list):
+    """ดึง worksheet ถ้ามีอยู่แล้ว หรือสร้างใหม่พร้อม header"""
+    try:
+        return spreadsheet.worksheet(name)
+    except Exception:
+        sheet = spreadsheet.add_worksheet(title=name, rows=1000, cols=len(headers))
+        sheet.append_row(headers)
+        return sheet
+
+
+# ── DELETE ────────────────────────────────────────────────────────────────────
+
+def delete_last_transaction(user_id: str) -> dict:
+    """ลบรายการ EXPENSE/INCOME ล่าสุดของ user"""
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("transactions")
+        records = sheet.get_all_records()
+        for i in range(len(records) - 1, -1, -1):
+            r = records[i]
+            if r.get("source_user_id") == user_id and r.get("status") == "OK":
+                row_index = i + 2
+                sheet.update_cell(row_index, 10, "DELETED")
+                return {
+                    "success": True,
+                    "note": r.get("note", ""),
+                    "amount": float(r.get("amount", 0) or 0),
+                    "intent": r.get("intent", "")
+                }
+        return {"success": False}
+    except Exception as e:
+        print(f"[sheets] delete_last_transaction error: {e}")
+        return {"success": False}
+
+
+# ── SEARCH ────────────────────────────────────────────────────────────────────
+
+def search_transactions(user_id: str, keyword: str) -> list:
+    """ค้นหารายการที่ note หรือ category ตรงกับ keyword"""
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("transactions")
+        records = sheet.get_all_records()
+        kw = keyword.lower()
+        results = []
+        for r in records:
+            if r.get("source_user_id") != user_id:
+                continue
+            if r.get("status") == "DELETED":
+                continue
+            if r.get("intent") not in ("EXPENSE", "INCOME"):
+                continue
+            note = str(r.get("note", "")).lower()
+            category = str(r.get("category", "")).lower()
+            raw = str(r.get("raw_message", "")).lower()
+            if kw in note or kw in category or kw in raw:
+                results.append({
+                    "intent": r.get("intent"),
+                    "note": r.get("note", ""),
+                    "amount": float(r.get("amount", 0) or 0),
+                    "category": r.get("category", ""),
+                    "timestamp": r.get("timestamp", "")[:10]
+                })
+        return results[-20:]
+    except Exception as e:
+        print(f"[sheets] search_transactions error: {e}")
+        return []
+
+
+# ── BUDGET ────────────────────────────────────────────────────────────────────
+
+def _settings_sheet(spreadsheet):
+    return _get_or_create_sheet(
+        spreadsheet, "settings",
+        ["source_user_id", "budget", "savings_goal", "updated_at"]
+    )
+
+
+def _find_settings_row(sheet, user_id: str):
+    records = sheet.get_all_records()
+    for i, r in enumerate(records):
+        if r.get("source_user_id") == user_id:
+            return i + 2, r
+    return None, {}
+
+
+def set_budget(user_id: str, amount: float) -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _settings_sheet(spreadsheet)
+        row_idx, existing = _find_settings_row(sheet, user_id)
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+        if row_idx:
+            sheet.update_cell(row_idx, 2, amount)
+            sheet.update_cell(row_idx, 4, now)
+        else:
+            sheet.append_row([user_id, amount, existing.get("savings_goal", ""), now])
+        return True
+    except Exception as e:
+        print(f"[sheets] set_budget error: {e}")
+        return False
+
+
+def get_budget_status(user_id: str) -> dict:
+    """คืน budget และ total_expense เดือนนี้"""
+    try:
+        spreadsheet = get_sheet_client()
+        _, settings = _find_settings_row(_settings_sheet(spreadsheet), user_id)
+        budget = float(settings.get("budget", 0) or 0)
+        summary = get_summary()
+        expense = summary.get("total_expense", 0) if summary.get("success") else 0
+        return {"budget": budget, "expense": expense, "remaining": budget - expense}
+    except Exception as e:
+        print(f"[sheets] get_budget_status error: {e}")
+        return {"budget": 0, "expense": 0, "remaining": 0}
+
+
+# ── SAVINGS ───────────────────────────────────────────────────────────────────
+
+def set_savings_goal(user_id: str, amount: float) -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _settings_sheet(spreadsheet)
+        row_idx, existing = _find_settings_row(sheet, user_id)
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+        if row_idx:
+            sheet.update_cell(row_idx, 3, amount)
+            sheet.update_cell(row_idx, 4, now)
+        else:
+            sheet.append_row([user_id, existing.get("budget", ""), amount, now])
+        return True
+    except Exception as e:
+        print(f"[sheets] set_savings_goal error: {e}")
+        return False
+
+
+def get_savings_status(user_id: str) -> dict:
+    """คืน savings_goal และ balance เดือนนี้"""
+    try:
+        spreadsheet = get_sheet_client()
+        _, settings = _find_settings_row(_settings_sheet(spreadsheet), user_id)
+        goal = float(settings.get("savings_goal", 0) or 0)
+        summary = get_summary()
+        balance = summary.get("balance", 0) if summary.get("success") else 0
+        return {"goal": goal, "saved": max(balance, 0), "remaining": max(goal - balance, 0)}
+    except Exception as e:
+        print(f"[sheets] get_savings_status error: {e}")
+        return {"goal": 0, "saved": 0, "remaining": 0}
+
+
+# ── TASKS ─────────────────────────────────────────────────────────────────────
+
+def _tasks_sheet(spreadsheet):
+    return _get_or_create_sheet(
+        spreadsheet, "tasks",
+        ["timestamp", "source_user_id", "task", "status"]
+    )
+
+
+def add_task(user_id: str, task: str) -> bool:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _tasks_sheet(spreadsheet)
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+        sheet.append_row([now, user_id, task, "PENDING"])
+        return True
+    except Exception as e:
+        print(f"[sheets] add_task error: {e}")
+        return False
+
+
+def list_tasks(user_id: str) -> list:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _tasks_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        return [
+            {"row_index": i + 2, "task": r.get("task", ""), "timestamp": r.get("timestamp", "")[:10]}
+            for i, r in enumerate(records)
+            if r.get("source_user_id") == user_id and r.get("status") == "PENDING"
+        ]
+    except Exception as e:
+        print(f"[sheets] list_tasks error: {e}")
+        return []
+
+
+def complete_task(user_id: str, keyword: str) -> dict:
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _tasks_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        kw = keyword.lower()
+        matched = [
+            (i + 2, r) for i, r in enumerate(records)
+            if r.get("source_user_id") == user_id
+            and r.get("status") == "PENDING"
+            and kw in r.get("task", "").lower()
+        ]
+        if not matched:
+            pending = [r.get("task", "") for _, r in [
+                (i + 2, r) for i, r in enumerate(records)
+                if r.get("source_user_id") == user_id and r.get("status") == "PENDING"
+            ]]
+            return {"success": False, "pending": pending}
+        if len(matched) == 1:
+            row_idx, r = matched[0]
+            sheet.update_cell(row_idx, 4, "DONE")
+            return {"success": True, "task": r.get("task", "")}
+        return {"success": False, "ambiguous": [r.get("task", "") for _, r in matched]}
+    except Exception as e:
+        print(f"[sheets] complete_task error: {e}")
+        return {"success": False, "pending": []}
+
+
+def get_all_user_ids() -> list:
+    """ดึง user_id ทั้งหมดที่มีรายการใน transactions"""
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = spreadsheet.worksheet("transactions")
+        records = sheet.get_all_records()
+        seen = set()
+        result = []
+        for r in records:
+            uid = r.get("source_user_id", "")
+            if uid and uid not in seen:
+                seen.add(uid)
+                result.append(uid)
+        return result
+    except Exception as e:
+        print(f"[sheets] get_all_user_ids error: {e}")
+        return []
+
+
 def get_pending_reminders() -> list:
     try:
         spreadsheet = get_sheet_client()

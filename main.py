@@ -23,10 +23,16 @@ import asyncio
 import json
 from dotenv import load_dotenv
 
-from parser import parse_message
-from sheets import (append_transaction, append_note, get_summary,
-                    format_summary_message, format_quick_summary,
-                    get_active_reminders, cancel_reminder)
+from parser import parse_message, analyze_with_ai
+from sheets import (
+    append_transaction, append_note, get_summary,
+    format_summary_message, format_quick_summary,
+    get_active_reminders, cancel_reminder,
+    delete_last_transaction, search_transactions,
+    set_budget, get_budget_status,
+    set_savings_goal, get_savings_status,
+    add_task, list_tasks, complete_task,
+)
 from calendar_service import create_reminder_event, delete_calendar_event
 from scheduler import check_reminders
 
@@ -77,8 +83,11 @@ def get_help_message() -> str:
 
 MAIN_QUICK_REPLY = QuickReply(items=[
     QuickReplyItem(action=MessageAction(label="📊 สรุปเดือนนี้", text="สรุปเดือนนี้")),
+    QuickReplyItem(action=MessageAction(label="🧠 วิเคราะห์", text="วิเคราะห์การใช้จ่าย")),
     QuickReplyItem(action=MessageAction(label="💰 รายรับ", text="รายรับ")),
     QuickReplyItem(action=MessageAction(label="💸 รายจ่าย", text="รายจ่าย")),
+    QuickReplyItem(action=MessageAction(label="📋 Task", text="ดู task")),
+    QuickReplyItem(action=MessageAction(label="💼 งบประมาณ", text="ดูงบประมาณ")),
     QuickReplyItem(action=MessageAction(label="⏰ ตั้งเตือน", text="เตือน")),
     QuickReplyItem(action=MessageAction(label="❓ ช่วยเหลือ", text="ช่วยด้วย")),
 ])
@@ -171,7 +180,10 @@ MENU_PROMPTS = {
         "  9 โมง = 09:00 | บ่าย 3 = 15:00\n"
         "  6 โมงเย็น = 18:00 | ทุ่มครึ่ง = 19:30"
     ),
-    "ช่วยด้วย": None,  # ใช้ get_help_message() แทน
+    "ดู task": None,         # ส่งต่อไป parser (TASK_LIST intent)
+    "ดูงบประมาณ": None,      # ส่งต่อไป parser (BUDGET intent)
+    "วิเคราะห์การใช้จ่าย": None,  # ส่งต่อไป parser (ANALYZE intent)
+    "ช่วยด้วย": "HELP",      # ใช้ get_help_message()
 }
 
 
@@ -186,9 +198,15 @@ def handle_message(event: MessageEvent):
 
         # ── Menu shortcut: ดัก keyword จาก Rich Menu / Quick Reply ──
         if raw_text in MENU_PROMPTS:
-            prompt_text = MENU_PROMPTS[raw_text] or get_help_message()
-            reply(reply_token, prompt_text, quick_reply=True)
-            return
+            prompt_text = MENU_PROMPTS[raw_text]
+            if prompt_text == "HELP":
+                reply(reply_token, get_help_message(), quick_reply=True)
+                return
+            elif prompt_text is not None:
+                # มี prompt สำเร็จรูป → ตอบกลับแล้วรอ user พิมพ์ต่อ
+                reply(reply_token, prompt_text, quick_reply=True)
+                return
+            # prompt_text = None → ส่งต่อให้ parser จัดการตามปกติ
 
         # ── Step 1: Parse ข้อความด้วย Gemini (พร้อม history) ──
         user_history = conversation_history.get(user_id, [])
@@ -365,6 +383,147 @@ def handle_message(event: MessageEvent):
                 reply(reply_token, message, quick_reply=True)
             else:
                 reply(reply_token, "❌ ไม่สามารถดึงข้อมูลสรุปได้ กรุณาลองใหม่ครับ")
+
+        elif intent == "ANALYZE":
+            summary = get_summary()
+            if summary["success"]:
+                analysis = analyze_with_ai(summary)
+                reply(reply_token, f"🧠 วิเคราะห์การใช้จ่ายของคุณ\n\n{analysis}", quick_reply=True)
+            else:
+                reply(reply_token, "❌ ไม่มีข้อมูลการใช้จ่ายเดือนนี้ครับ")
+
+        elif intent == "DELETE":
+            result = delete_last_transaction(user_id)
+            if result["success"]:
+                icon = "💸" if result["intent"] == "EXPENSE" else "💰"
+                reply(reply_token,
+                      f"🗑 ลบรายการล่าสุดแล้วครับ\n"
+                      f"{icon} {result['note']} — {result['amount']:,.2f} บาท",
+                      quick_reply=True)
+            else:
+                reply(reply_token, "❌ ไม่พบรายการที่จะลบครับ")
+
+        elif intent == "SEARCH":
+            keyword = parsed.get("note", "").strip()
+            if not keyword:
+                reply(reply_token, "🔍 บอกด้วยนะครับว่าจะค้นหาอะไร\nเช่น \"ค้นหากาแฟ\"")
+            else:
+                results = search_transactions(user_id, keyword)
+                if not results:
+                    reply(reply_token, f"🔍 ไม่พบรายการที่มีคำว่า \"{keyword}\" ครับ")
+                else:
+                    total = sum(r["amount"] for r in results)
+                    lines = [f"🔍 ผลการค้นหา \"{keyword}\" — {len(results)} รายการ\n"]
+                    for r in results[-10:]:
+                        icon = "💸" if r["intent"] == "EXPENSE" else "💰"
+                        lines.append(f"  {icon} {r['note']} {r['amount']:,.0f} บาท ({r['timestamp']})")
+                    lines.append(f"\nรวม: {total:,.2f} บาท")
+                    reply(reply_token, "\n".join(lines), quick_reply=True)
+
+        elif intent == "BUDGET":
+            amount = parsed.get("amount")
+            if amount:
+                set_budget(user_id, float(amount))
+                status = get_budget_status(user_id)
+                reply(reply_token,
+                      f"✅ ตั้งงบประมาณเดือนนี้แล้วครับ\n"
+                      f"💼 งบ:     {status['budget']:,.2f} บาท\n"
+                      f"💸 ใช้ไป:  {status['expense']:,.2f} บาท\n"
+                      f"{'✅' if status['remaining'] >= 0 else '⚠️'} เหลือ:   {status['remaining']:,.2f} บาท",
+                      quick_reply=True)
+            else:
+                status = get_budget_status(user_id)
+                if status["budget"] == 0:
+                    reply(reply_token,
+                          "📊 ยังไม่ได้ตั้งงบประมาณครับ\nพิมพ์ว่า \"ตั้งงบ 8000\" ได้เลย")
+                else:
+                    pct = (status["expense"] / status["budget"] * 100) if status["budget"] > 0 else 0
+                    bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
+                    reply(reply_token,
+                          f"💼 งบประมาณเดือนนี้\n\n"
+                          f"งบ:    {status['budget']:,.2f} บาท\n"
+                          f"ใช้ไป: {status['expense']:,.2f} บาท ({pct:.1f}%)\n"
+                          f"[{bar}]\n"
+                          f"{'✅ เหลือ' if status['remaining'] >= 0 else '⚠️ เกินงบ'}: {abs(status['remaining']):,.2f} บาท",
+                          quick_reply=True)
+
+        elif intent == "SAVINGS":
+            amount = parsed.get("amount")
+            if amount:
+                set_savings_goal(user_id, float(amount))
+                status = get_savings_status(user_id)
+                reply(reply_token,
+                      f"🎯 ตั้งเป้าออมแล้วครับ!\n"
+                      f"🎯 เป้า:  {status['goal']:,.2f} บาท\n"
+                      f"💰 ออมได้: {status['saved']:,.2f} บาท\n"
+                      f"📌 ขาดอีก: {status['remaining']:,.2f} บาท",
+                      quick_reply=True)
+            else:
+                status = get_savings_status(user_id)
+                if status["goal"] == 0:
+                    reply(reply_token,
+                          "🎯 ยังไม่ได้ตั้งเป้าออมครับ\nพิมพ์ว่า \"ตั้งเป้าออม 3000\" ได้เลย")
+                else:
+                    pct = (status["saved"] / status["goal"] * 100) if status["goal"] > 0 else 0
+                    bar = "█" * int(pct / 10) + "░" * (10 - int(pct / 10))
+                    reply(reply_token,
+                          f"🎯 เป้าหมายการออมเดือนนี้\n\n"
+                          f"เป้า:   {status['goal']:,.2f} บาท\n"
+                          f"ออมได้: {status['saved']:,.2f} บาท ({pct:.1f}%)\n"
+                          f"[{bar}]\n"
+                          f"{'🎉 ถึงเป้าแล้ว!' if status['remaining'] <= 0 else f'📌 ขาดอีก {status[\"remaining\"]:,.2f} บาท'}",
+                          quick_reply=True)
+
+        elif intent == "TASK_ADD":
+            task = parsed.get("note", "").strip()
+            if not task:
+                reply(reply_token, "📋 บอกด้วยนะครับว่าจะเพิ่ม task อะไร")
+            else:
+                add_task(user_id, task)
+                tasks = list_tasks(user_id)
+                reply(reply_token,
+                      f"✅ เพิ่ม task แล้วครับ!\n📋 {task}\n\n"
+                      f"มี task ค้างอยู่ {len(tasks)} รายการ",
+                      quick_reply=True)
+
+        elif intent == "TASK_DONE":
+            keyword = parsed.get("note", "").strip()
+            if not keyword:
+                reply(reply_token, "✅ บอกด้วยนะครับว่า task ไหนเสร็จแล้ว")
+            else:
+                result = complete_task(user_id, keyword)
+                if result.get("success"):
+                    remaining = list_tasks(user_id)
+                    reply(reply_token,
+                          f"🎉 เยี่ยมมาก! ทำเสร็จแล้วครับ\n✅ {result['task']}\n\n"
+                          f"{'ไม่มี task ค้างแล้ว! 🎊' if not remaining else f'ยังมีอีก {len(remaining)} รายการ'}",
+                          quick_reply=True)
+                elif result.get("ambiguous"):
+                    lines = ["🔍 เจอหลายรายการ ระบุให้ชัดขึ้นนิดนึงนะครับ:\n"]
+                    for t in result["ambiguous"]:
+                        lines.append(f"  • {t}")
+                    reply(reply_token, "\n".join(lines))
+                else:
+                    pending = result.get("pending", [])
+                    if pending:
+                        lines = [f"🔍 ไม่เจอ task \"{keyword}\" ครับ มีอยู่:\n"]
+                        for t in pending:
+                            lines.append(f"  • {t}")
+                        reply(reply_token, "\n".join(lines))
+                    else:
+                        reply(reply_token, "📭 ไม่มี task ค้างอยู่เลยครับ")
+
+        elif intent == "TASK_LIST":
+            tasks = list_tasks(user_id)
+            if not tasks:
+                reply(reply_token, "🎊 ไม่มี task ค้างอยู่เลยครับ! ว่างสบายใจ 😊",
+                      quick_reply=True)
+            else:
+                lines = [f"📋 Task ที่ยังค้างอยู่ {len(tasks)} รายการ\n"]
+                for i, t in enumerate(tasks, 1):
+                    lines.append(f"  {i}. {t['task']} ({t['timestamp']})")
+                lines.append("\nพิมพ์ \"เสร็จแล้ว [ชื่อ task]\" เมื่อทำเสร็จนะครับ")
+                reply(reply_token, "\n".join(lines), quick_reply=True)
 
         elif intent == "CHAT":
             response = parsed.get("response", "").strip()

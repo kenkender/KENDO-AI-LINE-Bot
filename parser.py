@@ -71,6 +71,35 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 - CANCEL   = ยกเลิก reminder หรือโน้ต
     ตัวอย่าง: "ยกเลิกเตือน ต่อ พรบ" "ลบนัด ประชุม" "ยกเลิกการแจ้งเตือนทั้งหมด"
 
+- ANALYZE  = ขอวิเคราะห์พฤติกรรมการใช้จ่าย
+    ตัวอย่าง: "วิเคราะห์การใช้จ่ายให้หน่อย" "ใช้เงินผิดปกติไหมเดือนนี้" "หมวดไหนใช้มากสุด"
+
+- DELETE   = ลบรายการธุรกรรมล่าสุดที่เพิ่งบันทึกไป
+    ตัวอย่าง: "ลบรายการล่าสุด" "เพิ่งกรอกผิด ลบให้ด้วย" "ยกเลิกรายการที่เพิ่งเพิ่ม"
+
+- SEARCH   = ค้นหารายการในประวัติ
+    ตัวอย่าง: "ค้นหากาแฟ" "หาว่าซื้ออะไรบ้าง" "ใช้เงินกับข้าวไปเท่าไหร่"
+    note field = คำค้นหา เช่น "กาแฟ" "น้ำมัน" "ค่าไฟ"
+
+- BUDGET   = ตั้งหรือดูงบประมาณรายเดือน
+    ตัวอย่าง: "ตั้งงบเดือนนี้ 8000" "งบเหลือเท่าไหร่" "ดูงบประมาณ"
+    amount = จำนวนงบ (null ถ้าแค่ขอดู)
+
+- SAVINGS  = ตั้งหรือดูเป้าหมายการออม
+    ตัวอย่าง: "ตั้งเป้าออม 3000" "ออมได้เท่าไหร่แล้ว" "เป้าออมเดือนนี้เป็นยังไง"
+    amount = เป้าที่ตั้ง (null ถ้าแค่ขอดู)
+
+- TASK_ADD  = เพิ่ม task หรืองานที่ต้องทำ
+    ตัวอย่าง: "เพิ่มงาน ส่งรายงานวันศุกร์" "task: โทรหาหมอ" "ต้องทำ: ซื้อของขวัญ"
+    note = รายละเอียด task
+
+- TASK_DONE = mark task ว่าทำเสร็จแล้ว
+    ตัวอย่าง: "เสร็จแล้ว ส่งรายงาน" "ทำเสร็จแล้ว โทรหาหมอ" "done: ซื้อของขวัญ"
+    note = ชื่อ task ที่เสร็จ
+
+- TASK_LIST = ดู task ที่ยังค้างอยู่
+    ตัวอย่าง: "งานที่ยังไม่เสร็จมีอะไรบ้าง" "ดู task ทั้งหมด" "มีอะไรต้องทำบ้าง"
+
 - CHAT     = คำถามทั่วไป, ขอคำแนะนำ, ทักทาย, หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "วันนี้อากาศเป็นยังไง" "ช่วยแปลภาษาอังกฤษหน่อย"
               "กินอะไรดี" "ขอคำแนะนำหน่อย" "คุณคือใคร" "ทำอะไรได้บ้าง"
@@ -84,7 +113,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -188,6 +217,57 @@ def parse_message(user_text: str, history: list = None) -> dict:
     except Exception as e:
         return {"success": False, "error": "api_error",
                 "message": f"เกิดข้อผิดพลาด: {str(e)}"}
+
+
+def analyze_with_ai(summary: dict) -> str:
+    """ส่งข้อมูลสรุปให้ Groq วิเคราะห์พฤติกรรมการใช้จ่าย"""
+    thai_months = {
+        1: "มกราคม", 2: "กุมภาพันธ์", 3: "มีนาคม", 4: "เมษายน",
+        5: "พฤษภาคม", 6: "มิถุนายน", 7: "กรกฎาคม", 8: "สิงหาคม",
+        9: "กันยายน", 10: "ตุลาคม", 11: "พฤศจิกายน", 12: "ธันวาคม"
+    }
+    month_name = thai_months.get(summary["month"], str(summary["month"]))
+
+    lines = [
+        f"ข้อมูลการเงินเดือน{month_name} {summary['year']}:",
+        f"รายรับรวม: {summary['total_income']:,.2f} บาท",
+        f"รายจ่ายรวม: {summary['total_expense']:,.2f} บาท",
+        f"คงเหลือ: {summary['balance']:,.2f} บาท",
+        "รายจ่ายแยกหมวด:",
+    ]
+    for cat, amt in sorted(summary["expense_by_category"].items(), key=lambda x: x[1], reverse=True):
+        pct = (amt / summary["total_expense"] * 100) if summary["total_expense"] > 0 else 0
+        lines.append(f"  {cat}: {amt:,.2f} บาท ({pct:.1f}%)")
+
+    data_str = "\n".join(lines)
+
+    prompt = (
+        f"คุณคือ KENDO AI ผู้ช่วยการเงินส่วนตัว\n"
+        f"วิเคราะห์ข้อมูลต่อไปนี้และให้คำแนะนำเป็นภาษาไทย กระชับ เป็นกันเอง ไม่เกิน 200 คำ:\n\n"
+        f"{data_str}\n\n"
+        f"ให้วิเคราะห์: หมวดที่ใช้มากผิดปกติ, สัดส่วนรายรับ-รายจ่าย, และคำแนะนำปรับปรุง"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.5,
+        "max_tokens": 400
+    }
+
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(GROQ_API_URL, headers=headers, json=payload)
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        return "❌ ไม่สามารถวิเคราะห์ได้ในขณะนี้ครับ"
+    except Exception as e:
+        print(f"[parser] analyze_with_ai error: {e}")
+        return "❌ ไม่สามารถวิเคราะห์ได้ในขณะนี้ครับ"
 
 
 # ทดสอบ
