@@ -111,6 +111,22 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 - TASK_LIST = ดู task ที่ยังค้างอยู่
     ตัวอย่าง: "งานที่ยังไม่เสร็จมีอะไรบ้าง" "ดู task ทั้งหมด" "มีอะไรต้องทำบ้าง"
 
+- NEWS_THAI   = ขอดูข่าวไทยหรือข่าวในประเทศ
+    ตัวอย่าง: "ข่าวไทยวันนี้" "ข่าววันนี้" "ข่าวอาชญากรรม" "ข่าวท่องเที่ยว" "ข่าวด่วน"
+    news_query = หมวดข่าว เช่น "ทั่วไป" "อาชญากรรม" "ท่องเที่ยว" (default = "ทั่วไป")
+
+- NEWS_WORLD  = ขอดูข่าวต่างประเทศหรือข่าวโลก
+    ตัวอย่าง: "ข่าวต่างประเทศ" "ข่าวโลก" "world news" "ข่าวต่างชาติ" "ข่าวนอก"
+    news_query = null
+
+- NEWS_TECH   = ขอดูข่าวเทคโนโลยีหรือข่าว IT
+    ตัวอย่าง: "ข่าว IT" "ข่าวเทคโนโลยี" "tech news" "ข่าวมือถือ" "ข่าว AI" "ข่าวโปรแกรม"
+    news_query = null
+
+- NEWS_SEARCH = ค้นหาข่าวเฉพาะเจาะจง
+    ตัวอย่าง: "ข่าว [คำค้น]" "หาข่าวเรื่อง [คำค้น]" "มีข่าวอะไรเรื่อง [คำค้น]"
+    news_query = คำค้นหา เช่น "น้ำท่วม" "เลือกตั้ง" "crypto" "หุ้น"
+
 - CHAT     = คำถามทั่วไป ขอคำแนะนำ ทักทาย หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "แปลญี่ปุ่นให้" "คอมช้าทำไง" "แมวกินอะไรได้บ้าง"
               "แนะนำเกมหน่อย" "อยากออกกำลังกายแต่ขี้เกียจ" "วิเคราะห์ข่าวนี้"
@@ -144,7 +160,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -153,6 +169,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "summary_month": int (1-12) หรือ null — ใช้เฉพาะ SUMMARY intent เท่านั้น,
   "summary_year": int (ปี ค.ศ.) หรือ null — ใช้เฉพาะ SUMMARY intent เท่านั้น,
   "response": "string คำตอบสำหรับ CHAT intent เท่านั้น, null สำหรับ intent อื่น",
+  "news_query": "string หมวดหรือคำค้นข่าว ใช้เฉพาะ NEWS_THAI และ NEWS_SEARCH เท่านั้น, null สำหรับ intent อื่น",
   "confidence": 0.0-1.0
 }
 """

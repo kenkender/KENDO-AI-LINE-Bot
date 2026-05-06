@@ -37,6 +37,7 @@ from sheets import (
 )
 from calendar_service import create_reminder_event, delete_calendar_event
 from scheduler import check_reminders
+from news_service import get_thai_news, get_world_news, get_tech_news, search_news
 
 load_dotenv()
 
@@ -550,6 +551,27 @@ def handle_message(event: MessageEvent):
                     lines.append(f"  {i}. {t['task']} ({t['timestamp']})")
                 lines.append("\nพิมพ์ \"เสร็จแล้ว [ชื่อ task]\" เมื่อทำเสร็จนะครับ")
                 send("\n".join(lines), quick_reply=True)
+
+        elif intent == "NEWS_THAI":
+            category = parsed.get("news_query") or "ทั่วไป"
+            result = get_thai_news(category)
+            send(result["message"], quick_reply=True)
+
+        elif intent == "NEWS_WORLD":
+            result = get_world_news()
+            send(result["message"], quick_reply=True)
+
+        elif intent == "NEWS_TECH":
+            result = get_tech_news()
+            send(result["message"], quick_reply=True)
+
+        elif intent == "NEWS_SEARCH":
+            query = parsed.get("news_query", "").strip()
+            if not query:
+                send("🔍 บอกด้วยนะครับว่าอยากค้นข่าวเรื่องอะไร\nเช่น \"ข่าวน้ำท่วม\" หรือ \"ข่าวหุ้น\"")
+            else:
+                result = search_news(query)
+                send(result["message"], quick_reply=True)
 
         elif intent == "CHAT":
             response = parsed.get("response", "").strip()
