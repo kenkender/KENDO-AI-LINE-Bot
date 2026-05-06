@@ -5,11 +5,13 @@ scheduler.py
 """
 
 import asyncio
+import calendar
 import os
 import httpx
 from dotenv import load_dotenv
-from sheets import get_pending_reminders, mark_reminder_sent, get_summary, get_all_user_ids
-from sheets import format_summary_message
+from sheets import (get_pending_reminders, mark_reminder_sent, get_summary,
+                    get_all_user_ids, format_summary_message,
+                    get_budget_status, get_budget_warn_state, mark_budget_warned)
 from datetime import datetime
 import pytz
 
@@ -59,10 +61,69 @@ async def send_weekly_summary():
             print(f"[scheduler] weekly summary error for {user_id}: {e}")
 
 
+async def check_budget_warnings():
+    """ตรวจ burn rate ของทุก user แจ้งเตือนที่ 50%, 75%, 90% ของงบ (แต่ละระดับ 1 ครั้ง/เดือน)"""
+    THRESHOLDS = [50, 75, 90]
+    bangkok_tz = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(bangkok_tz)
+    month_key = now.strftime("%Y-%m")
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    days_elapsed = max(now.day, 1)
+
+    user_ids = get_all_user_ids()
+    for user_id in user_ids:
+        try:
+            status = get_budget_status(user_id)
+            budget = status["budget"]
+            if budget <= 0:
+                continue
+
+            expense = status["expense"]
+            pct = (expense / budget) * 100
+            projected = (expense / days_elapsed) * days_in_month
+
+            warned = get_budget_warn_state(user_id, month_key)
+
+            for threshold in THRESHOLDS:
+                if threshold in warned or pct < threshold:
+                    continue
+
+                if threshold == 50:
+                    icon, level_text = "🟡", "ใช้ไปครึ่งนึงแล้ว"
+                elif threshold == 75:
+                    icon, level_text = "🟠", "ใช้ไปสามในสี่แล้ว"
+                else:
+                    icon, level_text = "🔴", "ใกล้เต็มงบแล้ว!"
+
+                remaining = status["remaining"]
+                msg = (
+                    f"{icon} แจ้งเตือนงบประมาณ — {level_text}\n\n"
+                    f"💸 ใช้ไป:     {expense:,.0f} บาท ({pct:.1f}%)\n"
+                    f"💼 งบทั้งหมด: {budget:,.0f} บาท\n"
+                    f"💰 เหลือ:     {remaining:,.0f} บาท\n\n"
+                    f"📈 burn rate: {days_elapsed} วันแรก ใช้ไป {expense:,.0f}\n"
+                    f"   คาดสิ้นเดือนจะใช้ ~{projected:,.0f} บาท"
+                )
+                if projected > budget:
+                    over = projected - budget
+                    msg += f"\n⚠️ เกินงบประมาณประมาณ {over:,.0f} บาท!"
+                msg += "\n\n— KENDO AI 🤖"
+
+                success = await send_push_message(user_id, msg)
+                if success:
+                    mark_budget_warned(user_id, month_key, threshold)
+                    print(f"[scheduler] Budget warning {threshold}% sent to {user_id}")
+                break
+
+        except Exception as e:
+            print(f"[scheduler] budget warning error for {user_id}: {e}")
+
+
 async def check_reminders():
-    """Loop หลัก: check ทุก 60 วินาที, ส่ง weekly summary วันอาทิตย์ 20:00"""
+    """Loop หลัก: check ทุก 60 วินาที, ส่ง weekly summary วันอาทิตย์ 20:00, budget warning ทุกชั่วโมง"""
     print("[scheduler] Reminder scheduler started ✅")
     weekly_sent_date = None
+    budget_warned_hour = None
 
     while True:
         try:
@@ -75,6 +136,12 @@ async def check_reminders():
                 if weekly_sent_date != now.date():
                     weekly_sent_date = now.date()
                     await send_weekly_summary()
+
+            # Budget warning — ทุกชั่วโมง (ที่นาที 0)
+            current_hour = now.replace(minute=0, second=0, microsecond=0)
+            if budget_warned_hour != current_hour and now.minute == 0:
+                budget_warned_hour = current_hour
+                await check_budget_warnings()
 
             due = get_pending_reminders()
             print(f"[scheduler] Found {len(due)} pending reminders")

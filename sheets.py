@@ -412,6 +412,60 @@ def complete_task(user_id: str, keyword: str) -> dict:
         return {"success": False, "pending": []}
 
 
+# ── BUDGET WARNING STATE ──────────────────────────────────────────────────────
+
+def _budget_warnings_sheet(spreadsheet):
+    return _get_or_create_sheet(
+        spreadsheet, "budget_warnings",
+        ["source_user_id", "month_key", "warned_levels", "updated_at"]
+    )
+
+
+def get_budget_warn_state(user_id: str, month_key: str) -> set:
+    """คืน set ของ threshold % ที่แจ้งเตือนไปแล้วในเดือนนั้น เช่น {50, 75}"""
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _budget_warnings_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        for r in records:
+            if r.get("source_user_id") == user_id and r.get("month_key") == month_key:
+                levels_str = str(r.get("warned_levels", ""))
+                if not levels_str:
+                    return set()
+                return {int(x) for x in levels_str.split(",") if x.strip().isdigit()}
+        return set()
+    except Exception as e:
+        print(f"[sheets] get_budget_warn_state error: {e}")
+        return set()
+
+
+def mark_budget_warned(user_id: str, month_key: str, level: int) -> bool:
+    """บันทึกว่าได้แจ้งเตือน threshold นี้ไปแล้ว"""
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _budget_warnings_sheet(spreadsheet)
+        records = sheet.get_all_records()
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+
+        for i, r in enumerate(records):
+            if r.get("source_user_id") == user_id and r.get("month_key") == month_key:
+                existing = str(r.get("warned_levels", ""))
+                levels = {int(x) for x in existing.split(",") if x.strip().isdigit()} if existing else set()
+                levels.add(level)
+                new_levels = ",".join(str(l) for l in sorted(levels))
+                row_idx = i + 2
+                sheet.update_cell(row_idx, 3, new_levels)
+                sheet.update_cell(row_idx, 4, now)
+                return True
+
+        sheet.append_row([user_id, month_key, str(level), now])
+        return True
+    except Exception as e:
+        print(f"[sheets] mark_budget_warned error: {e}")
+        return False
+
+
 def get_all_user_ids() -> list:
     """ดึง user_id ทั้งหมดที่มีรายการใน transactions"""
     try:
