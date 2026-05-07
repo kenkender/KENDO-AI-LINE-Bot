@@ -14,8 +14,12 @@ from sheets import (get_pending_reminders, mark_reminder_sent, get_summary,
                     get_budget_status, get_budget_warn_state, mark_budget_warned,
                     list_tasks, get_all_briefing_users, get_today_reminders,
                     get_due_bills, mark_bill_reminded, create_recurring_reminder)
+from calendar_service import get_thai_holiday_today
 from datetime import datetime
 import pytz
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 load_dotenv()
 
@@ -256,6 +260,108 @@ async def check_bill_reminders():
             print(f"[scheduler] Bill reminder sent: {bill['name']} → {user_id}")
 
 
+async def generate_holiday_greeting(day_type: str, holiday_name: str = "") -> str:
+    """สร้างข้อความวันหยุดแบบสนทนาธรรมชาติโดย Groq"""
+    bangkok_tz = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(bangkok_tz)
+    thai_days = {0: "วันจันทร์", 1: "วันอังคาร", 2: "วันพุธ",
+                 3: "วันพฤหัสบดี", 4: "วันศุกร์", 5: "วันเสาร์", 6: "วันอาทิตย์"}
+    day_name = thai_days[now.weekday()]
+
+    if day_type == "public_holiday":
+        day_context = f"วันนี้เป็น{holiday_name} ({day_name}) ซึ่งเป็นวันหยุดราชการ"
+    elif day_type == "saturday":
+        day_context = "วันนี้เป็นวันเสาร์ หยุดพักผ่อนได้เต็มที่"
+    else:
+        day_context = "วันนี้เป็นวันอาทิตย์ วันสุดท้ายก่อนเริ่มสัปดาห์ใหม่"
+
+    prompt = f"""คุณคือ KENDO AI ผู้ช่วยส่วนตัวของ Kendo
+
+ข้อมูล Kendo: ตำรวจท่องเที่ยว มีมอเตอร์ไซค์และรถยนต์ มีแมว 2 ตัวชื่อมั่งมี กับมารวย ชอบ IT เกม หนัง และเทคโนโลยี อยากออกกำลังกายแต่ขาด passion
+
+สถานการณ์: {day_context}
+
+เขียนข้อความทักทายและแนะนำกิจกรรมวันหยุดให้ Kendo โดย:
+- ใช้ภาษาพูดทั่วไป เป็นกันเอง อบอุ่น เหมือนเพื่อนสนิทคุย ไม่ใช่ robot
+- ความยาวประมาณ 5-8 ประโยค ไม่สั้นเกิน ไม่ยาวเกิน
+- ให้เหตุผลว่าทำไมถึงแนะนำกิจกรรมนั้น ไม่ใช่แค่บอกให้ทำ
+- แนะนำ 2-3 กิจกรรมที่เหมาะกับวันหยุด (เช่น ทำความสะอาดห้อง ซักผ้า เล่นเกม อยู่กับแมว ออกกำลังกายเบาๆ ดูหนัง)
+- ถ้าเป็นวันหยุดพิเศษ (เช่น สงกรานต์ วันแม่ วันพ่อ) ให้พูดถึงความหมายของวันนั้นด้วย
+- ลงท้ายด้วยคำให้กำลังใจสั้นๆ แบบเป็นกันเอง
+- ห้ามขึ้นต้นด้วย "วันนี้เป็นวันหยุดครับ" หรือ "สวัสดีครับ" แบบแข็งๆ ให้เปิดด้วยประโยคที่น่าสนใจกว่านี้
+- ห้ามใส่ bullet point หรือ list ให้เขียนเป็นย่อหน้าธรรมชาติ"""
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.8,
+            "max_tokens": 500
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(GROQ_API_URL, headers=headers, json=payload)
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[scheduler] generate_holiday_greeting error: {e}")
+
+    # Fallback ถ้า Groq ล้มเหลว
+    if day_type == "public_holiday":
+        return (f"🎉 {holiday_name}นะครับ Kendo!\n\n"
+                f"วันหยุดแบบนี้ถ้าไม่ได้ไปไหน ลองจัดการห้องให้เรียบร้อยก่อนนะครับ "
+                f"ทำความสะอาดเสร็จแล้วจะรู้สึกสบายใจขึ้นเยอะเลย แล้วค่อยนอนพักหรือเล่นเกมกับมั่งมีมารวยก็ได้ครับ 😊")
+    elif day_type == "saturday":
+        return ("🌤 เสาร์แล้วครับ Kendo!\n\n"
+                "ถ้ายังไม่ได้ซักผ้าหรือเก็บกวาดห้อง วันนี้เหมาะมากเลยครับ ทำเสร็จแล้วบ่ายๆ "
+                "จะได้นอนพักหรือดูหนังอย่างสบายใจ ไม่มีเรื่องค้างคาในหัว 😊")
+    else:
+        return ("☀️ อาทิตย์แล้วครับ Kendo!\n\n"
+                "วันสุดท้ายของสัปดาห์แล้ว ถ้ายังพักผ่อนไม่พอก็ชาร์จแบตให้เต็มก่อนนะครับ "
+                "พรุ่งนี้จะได้ไปทำงานอย่างมีแรง 😊")
+
+
+async def send_holiday_greetings(now: datetime):
+    """ตรวจสอบและส่งข้อความวันหยุดให้ user ทั้งหมด เวลา 08:00"""
+    loop = asyncio.get_running_loop()
+    is_weekend = now.weekday() >= 5  # 5=เสาร์, 6=อาทิตย์
+
+    holiday_name = await loop.run_in_executor(None, get_thai_holiday_today)
+    is_holiday = bool(holiday_name)
+
+    if not (is_weekend or is_holiday):
+        return
+
+    if is_holiday:
+        day_type = "public_holiday"
+    elif now.weekday() == 5:
+        day_type = "saturday"
+    else:
+        day_type = "sunday"
+
+    greeting = await generate_holiday_greeting(day_type, holiday_name or "")
+
+    if day_type == "public_holiday":
+        header = f"🎉 {holiday_name}\n\n"
+    elif day_type == "saturday":
+        header = "🌤 วันเสาร์\n\n"
+    else:
+        header = "☀️ วันอาทิตย์\n\n"
+
+    message = header + greeting
+
+    user_ids = await loop.run_in_executor(None, get_all_user_ids)
+    for user_id in user_ids:
+        try:
+            await send_push_message(user_id, message)
+            print(f"[scheduler] Holiday greeting sent ({day_type}) → {user_id}")
+        except Exception as e:
+            print(f"[scheduler] send_holiday_greetings error for {user_id}: {e}")
+
+
 async def check_reminders():
     """Loop หลัก: check ทุก 60 วินาที, ส่ง weekly summary วันอาทิตย์ 20:00, budget warning ทุกชั่วโมง"""
     print("[scheduler] Reminder scheduler started ✅")
@@ -263,6 +369,7 @@ async def check_reminders():
     budget_warned_hour = None
     bill_checked_date = None
     briefing_sent: dict = {}  # {user_id: date}
+    holiday_greeted_date = None
 
     while True:
         try:
@@ -281,6 +388,11 @@ async def check_reminders():
             if budget_warned_hour != current_hour and now.minute == 0:
                 budget_warned_hour = current_hour
                 await check_budget_warnings()
+
+            # Holiday greeting — วันเสาร์/อาทิตย์/หยุดราชการ เวลา 08:00
+            if now.hour == 8 and now.minute == 0 and holiday_greeted_date != now.date():
+                holiday_greeted_date = now.date()
+                await send_holiday_greetings(now)
 
             # Bill reminders — วันละครั้ง เวลา 09:00
             if now.hour == 9 and now.minute == 0 and bill_checked_date != now.date():

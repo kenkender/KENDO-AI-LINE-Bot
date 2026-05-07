@@ -79,6 +79,45 @@ def create_reminder_event(note: str, reminder_datetime_str: str) -> dict:
         print(f"[calendar_service.py] create_reminder_event error: {e}")
         return {"success": False, "error": str(e)}
 
+THAI_HOLIDAY_CAL_ID = "th.th#holiday@group.v.calendar.google.com"
+
+def get_thai_holiday_today(target_date=None) -> str | None:
+    """
+    ดึงชื่อวันหยุดราชการไทยของวันที่กำหนด
+    คืนค่าชื่อวันหยุด หรือ None ถ้าไม่ใช่วันหยุดราชการ
+    """
+    try:
+        service = get_calendar_service()
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        if target_date is None:
+            target_date = datetime.now(bangkok_tz).date()
+
+        day_start = datetime(
+            target_date.year, target_date.month, target_date.day,
+            0, 0, 0, tzinfo=bangkok_tz
+        )
+        day_end = datetime(
+            target_date.year, target_date.month, target_date.day,
+            23, 59, 59, tzinfo=bangkok_tz
+        )
+
+        events_result = service.events().list(
+            calendarId=THAI_HOLIDAY_CAL_ID,
+            timeMin=day_start.isoformat(),
+            timeMax=day_end.isoformat(),
+            singleEvents=True,
+            orderBy="startTime"
+        ).execute()
+
+        events = events_result.get("items", [])
+        if events:
+            return events[0].get("summary", "วันหยุดราชการ")
+        return None
+    except Exception as e:
+        print(f"[calendar_service] get_thai_holiday_today error: {e}")
+        return None
+
+
 def delete_calendar_event(event_id: str) -> bool:
     """
     ลบ Google Calendar event ตาม event_id
