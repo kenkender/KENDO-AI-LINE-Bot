@@ -410,8 +410,9 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     text = re.sub(r"```json|```", "", text).strip()
                     parsed = json.loads(text)
 
+                    is_fallback = model_name not in ("llama-3.3-70b-versatile",)
                     print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
-                    return {"success": True, "data": parsed}
+                    return {"success": True, "data": parsed, "model": model_name, "fallback": is_fallback}
 
                 except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError) as e:
                     print(f"[parser] {model_name} error: {e}, trying next...")
@@ -433,7 +434,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     text = re.sub(r"```json|```", "", text).strip()
                     parsed = json.loads(text)
                     print(f"[parser] Used model: gemini-1.5-flash (native)")
-                    return {"success": True, "data": parsed}
+                    return {"success": True, "data": parsed, "model": "gemini-1.5-flash", "fallback": True}
                 else:
                     print(f"[parser] gemini-1.5-flash native error: {resp.status_code}")
                     last_error = "gemini_error"
