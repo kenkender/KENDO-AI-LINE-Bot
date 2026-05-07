@@ -363,7 +363,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
                 "key": GEMINI_API_KEY,
                 "url": GEMINI_API_URL,
                 "headers": {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"},
-                "models": ["gemini-2.0-flash", "gemini-1.5-flash"],
+                "models": ["gemini-1.5-flash", "gemini-2.0-flash-exp"],
             },
         ]
 
@@ -416,8 +416,8 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
                     return {"success": True, "data": parsed}
 
-                except (httpx.TimeoutException, httpx.ConnectError) as e:
-                    print(f"[parser] {model_name} connection error: {e}, trying next...")
+                except (httpx.TimeoutException, httpx.ConnectError, httpx.HTTPStatusError) as e:
+                    print(f"[parser] {model_name} error: {e}, trying next...")
                     last_error = str(e)
                     continue
 
