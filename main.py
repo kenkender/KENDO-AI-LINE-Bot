@@ -6,6 +6,8 @@ import re
 import os
 import asyncio
 import json
+import pytz
+from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -13,7 +15,7 @@ from fastapi.responses import Response
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
-    ReplyMessageRequest, TextMessage, FlexMessage,
+    ReplyMessageRequest, PushMessageRequest, TextMessage, FlexMessage,
     QuickReply, QuickReplyItem, MessageAction
 )
 from linebot.v3.messaging.models import FlexContainer
@@ -46,6 +48,48 @@ load_dotenv()
 conversation_history: dict = {}
 MAX_HISTORY_PAIRS = 3
 user_name_cache: dict = {}
+_fallback_alerted: set = set()  # เก็บ user_id ที่แจ้งเตือนไปแล้วในรอบนี้
+
+MODEL_INFO = {
+    "llama-3.3-70b-versatile": ("Groq", "14,400 req/วัน", "รีเซ็ต 07:00 น. ทุกวัน"),
+    "llama-3.1-8b-instant":    ("Groq", "14,400 req/วัน", "รีเซ็ต 07:00 น. ทุกวัน"),
+    "llama3.1-8b":             ("Cerebras", "ไม่จำกัด (free tier)", "ไม่มีการรีเซ็ต"),
+    "llama3.1-70b":            ("Cerebras", "ไม่จำกัด (free tier)", "ไม่มีการรีเซ็ต"),
+    "gemini-1.5-flash":        ("Google Gemini", "1,500 req/วัน", "รีเซ็ต 07:00 น. ทุกวัน"),
+}
+
+
+def send_fallback_alert(user_id: str, model_name: str):
+    if user_id in _fallback_alerted:
+        return
+    _fallback_alerted.add(user_id)
+
+    bangkok_tz = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(bangkok_tz)
+    reset_hour = 7
+    if now.hour < reset_hour:
+        reset_in = reset_hour - now.hour
+    else:
+        reset_in = 24 - now.hour + reset_hour
+    reset_str = f"อีกประมาณ {reset_in} ชั่วโมง (07:00 น.)"
+
+    provider, quota, reset_info = MODEL_INFO.get(model_name, ("Unknown", "-", "-"))
+    msg = (
+        f"⚠️ แจ้งเตือน: โควต้า Groq หมดแล้ว\n\n"
+        f"🔄 ตอนนี้ใช้โมเดล: {model_name}\n"
+        f"🏢 Provider: {provider}\n"
+        f"📊 โควต้า: {quota}\n"
+        f"⏰ {reset_info}\n\n"
+        f"🕐 Groq จะรีเซ็ตใน {reset_str}"
+    )
+    try:
+        with ApiClient(configuration) as api_client:
+            MessagingApi(api_client).push_message(
+                PushMessageRequest(to=user_id, messages=[TextMessage(text=msg)])
+            )
+        print(f"[alert] Sent fallback alert to {user_id}: using {model_name}")
+    except Exception as e:
+        print(f"[alert] Failed to send fallback alert: {e}")
 
 
 def get_user_name(user_id: str) -> str:
@@ -234,6 +278,11 @@ def handle_message(event: MessageEvent):
             else:
                 send("😅 ระบบมีปัญหาแป๊บนึง ลองส่งใหม่อีกทีนะครับ")
             return
+
+        if result.get("fallback"):
+            send_fallback_alert(user_id, result.get("model", "unknown"))
+        else:
+            _fallback_alerted.discard(user_id)
 
         parsed = result["data"]
         intent = parsed.get("intent", "UNKNOWN")
