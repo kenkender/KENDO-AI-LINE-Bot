@@ -306,14 +306,23 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 
 def _build_history_context(history: list) -> str:
-    """แปลง history เป็นข้อความ context สำหรับใส่ใน prompt"""
+    """แปลง history เป็นข้อความ context กระชับสำหรับใส่ใน prompt"""
     if not history:
         return ""
-    lines = ["บริบทการสนทนาก่อนหน้า (ใช้เพื่อเข้าใจ context เท่านั้น):"]
+    lines = ["บริบทก่อนหน้า:"]
     for i in range(0, len(history) - 1, 2):
         user_msg = history[i]["parts"][0]
-        model_msg = history[i + 1]["parts"][0] if i + 1 < len(history) else ""
-        lines.append(f"- ผู้ใช้พูดว่า: \"{user_msg}\" → ระบบแปลได้: {model_msg}")
+        model_raw = history[i + 1]["parts"][0] if i + 1 < len(history) else ""
+        try:
+            m = json.loads(model_raw)
+            intent = m.get("intent", "?")
+            note = m.get("note") or m.get("response", "")
+            if note and len(note) > 60:
+                note = note[:60] + "…"
+            model_summary = f"{intent}: {note}" if note else intent
+        except Exception:
+            model_summary = model_raw[:80]
+        lines.append(f"- \"{user_msg}\" → {model_summary}")
     return "\n".join(lines) + "\n\n"
 
 
@@ -364,6 +373,11 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     last_error = "quota_exceeded"
                     continue
 
+                if resp.status_code == 413:
+                    print(f"[parser] {model_name} payload too large, trying next...")
+                    last_error = "payload_too_large"
+                    continue
+
                 if resp.status_code == 401:
                     print(f"[parser] GROQ_API_KEY ไม่ถูกต้อง (401)")
                     return {"success": False, "error": "auth_error",
@@ -384,7 +398,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
                 last_error = str(e)
                 continue
 
-        if last_error == "quota_exceeded":
+        if last_error in ("quota_exceeded", "payload_too_large"):
             return {"success": False, "error": "quota_exceeded",
                     "message": "Groq quota หมดทุก model"}
 
