@@ -22,6 +22,9 @@ import pytz
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_BALANCE_URL = "https://api.deepseek.com/user/balance"
+DEEPSEEK_ALERT_THRESHOLD = 0.50  # แจ้งเตือนเมื่อ balance เหลือน้อยกว่า $0.50
 
 load_dotenv()
 
@@ -52,6 +55,45 @@ async def send_push_message(user_id: str, message: str) -> bool:
     except Exception as e:
         print(f"[scheduler] send_push_message error: {e}")
         return False
+
+
+async def check_deepseek_balance(user_ids: list):
+    """เช็ค DeepSeek balance และแจ้งเตือนถ้าต่ำกว่า threshold"""
+    if not DEEPSEEK_API_KEY:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                DEEPSEEK_BALANCE_URL,
+                headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
+            )
+        if resp.status_code != 200:
+            print(f"[scheduler] DeepSeek balance check failed: {resp.status_code}")
+            return
+
+        data = resp.json()
+        balance_infos = data.get("balance_infos", [])
+        usd = next((b for b in balance_infos if b["currency"] == "USD"), None)
+        if not usd:
+            return
+
+        balance = float(usd["total_balance"])
+        print(f"[scheduler] DeepSeek balance: ${balance:.4f}")
+
+        if balance < DEEPSEEK_ALERT_THRESHOLD:
+            msg = (
+                f"⚠️ แจ้งเตือน: DeepSeek balance ใกล้หมดแล้วครับ!\n\n"
+                f"💰 Balance คงเหลือ: ${balance:.4f} USD\n"
+                f"📊 Threshold แจ้งเตือน: ${DEEPSEEK_ALERT_THRESHOLD:.2f} USD\n\n"
+                f"👉 เติมเงินได้ที่ platform.deepseek.com → Top up\n\n"
+                f"— KENDO AI 🤖"
+            )
+            for user_id in user_ids:
+                await send_push_message(user_id, msg)
+            print(f"[scheduler] DeepSeek low balance alert sent (${balance:.4f})")
+
+    except Exception as e:
+        print(f"[scheduler] check_deepseek_balance error: {e}")
 
 
 async def send_weekly_summary():
@@ -399,7 +441,8 @@ async def check_reminders():
     bill_checked_date = None
     briefing_sent: dict = {}  # {user_id: date}
     holiday_greeted_date = None
-    recurring_reminded_today: set = set()  # {user_id} ที่ส่งไปแล้ววันนี้
+    recurring_reminded_today: set = set()
+    deepseek_balance_checked_hour = None  # เช็คทุก 6 ชั่วโมง
 
     while True:
         try:
@@ -444,6 +487,12 @@ async def check_reminders():
                             await send_recurring_reminder_to_user(uid, rday)
                 except Exception as e:
                     print(f"[scheduler] recurring remind check error: {e}")
+
+            # DeepSeek balance check — ทุก 6 ชั่วโมง (00, 06, 12, 18)
+            if now.hour % 6 == 0 and now.minute == 0 and deepseek_balance_checked_hour != now.hour:
+                deepseek_balance_checked_hour = now.hour
+                all_uids = get_all_user_ids()
+                await check_deepseek_balance(all_uids)
 
             # Morning briefing — ส่งตาม hour ของแต่ละ user
             if now.minute == 0:
