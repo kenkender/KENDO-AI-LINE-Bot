@@ -19,6 +19,9 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
+CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
+
 SYSTEM_PROMPT = """
 คุณคือ KENDO AI ผู้ช่วยส่วนตัวของ Kendo
 หน้าที่หลัก: วิเคราะห์ข้อความภาษาไทย (ทั้งแบบทางการและภาษาพูดชีวิตประจำวัน)
@@ -348,7 +351,13 @@ def parse_message(user_text: str, history: list = None) -> dict:
                 "key": GROQ_API_KEY,
                 "url": GROQ_API_URL,
                 "headers": {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"],
+                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "deepseek-r1-distill-llama-70b"],
+            },
+            {
+                "key": CEREBRAS_API_KEY,
+                "url": CEREBRAS_API_URL,
+                "headers": {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
+                "models": ["llama-3.3-70b"],
             },
             {
                 "key": GEMINI_API_KEY,
