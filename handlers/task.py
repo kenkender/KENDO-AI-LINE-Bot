@@ -1,4 +1,5 @@
 from db import add_task, list_tasks, complete_task
+from flex_builder import build_task_list_card
 
 
 def handle_task_add(send, user_id, parsed):
@@ -46,11 +47,5 @@ def handle_task_done(send, user_id, parsed):
 
 def handle_task_list(send, user_id):
     tasks = list_tasks(user_id)
-    if not tasks:
-        send("🎊 ไม่มี task ค้างอยู่เลยครับ! ว่างสบายใจ 😊", quick_reply=True)
-    else:
-        lines = [f"📋 Task ที่ยังค้างอยู่ {len(tasks)} รายการ\n"]
-        for i, t in enumerate(tasks, 1):
-            lines.append(f"  {i}. {t['task']} ({t['timestamp']})")
-        lines.append("\nพิมพ์ \"เสร็จแล้ว [ชื่อ task]\" เมื่อทำเสร็จนะครับ")
-        send("\n".join(lines), quick_reply=True)
+    flex = build_task_list_card(tasks)
+    send.flex("📋 Task ที่ต้องทำ", flex, quick_reply=True)

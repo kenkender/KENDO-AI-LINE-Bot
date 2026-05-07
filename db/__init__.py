@@ -5,5 +5,8 @@ from db.budget import set_budget, get_budget_status, set_savings_goal, get_savin
 from db.tasks import add_task, list_tasks, complete_task
 from db.bills import add_bill, list_bills, delete_bill, get_due_bills, mark_bill_reminded
 from db.watchlist import add_watchlist_item, list_watchlist_items, done_watchlist_item
-from db.prefs import set_briefing, get_briefing, get_all_briefing_users
+from db.prefs import (set_briefing, get_briefing, get_all_briefing_users,
+                      set_recurring_remind_day, get_recurring_remind_day,
+                      get_all_recurring_remind_users)
 from db.summary import get_summary, format_summary_message, format_quick_summary, get_today_summary, get_compare_summary
+from db.recurring import add_recurring_items, list_recurring_items, delete_recurring_item, get_all_recurring_users

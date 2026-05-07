@@ -1,22 +1,24 @@
 from db import (
     append_transaction, delete_last_transaction, search_transactions,
-    get_summary, format_quick_summary,
+    get_summary, format_quick_summary, get_budget_status,
 )
+from flex_builder import build_expense_card, build_income_card, build_today_card
 
 
 def handle_expense(send, user_id, raw_text, parsed):
     success = append_transaction(user_id, raw_text, parsed)
     if success:
         summary = get_summary()
-        summary_text = format_quick_summary(summary) if summary["success"] else ""
-        send(
-            f"💸 จดให้แล้วครับ!\n"
-            f"📝 {parsed.get('note', '')}\n"
-            f"💰 {parsed.get('amount', 0):,.2f} บาท\n"
-            f"📂 หมวด: {parsed.get('category', 'อื่นๆ')}"
-            f"{summary_text}",
-            quick_reply=True
+        budget_status = get_budget_status(user_id)
+        flex = build_expense_card(
+            note=parsed.get("note", ""),
+            amount=parsed.get("amount", 0),
+            category=parsed.get("category", "อื่นๆ"),
+            summary=summary if summary["success"] else None,
+            budget_status=budget_status if budget_status.get("budget", 0) > 0 else None
         )
+        send.flex(f"💸 {parsed.get('note', 'รายจ่าย')} {parsed.get('amount', 0):,.0f} บาท",
+                  flex, quick_reply=True)
     else:
         send("😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
@@ -25,14 +27,13 @@ def handle_income(send, user_id, raw_text, parsed):
     success = append_transaction(user_id, raw_text, parsed)
     if success:
         summary = get_summary()
-        summary_text = format_quick_summary(summary) if summary["success"] else ""
-        send(
-            f"💰 เย่! บันทึกรายรับแล้วครับ\n"
-            f"📝 {parsed.get('note', '')}\n"
-            f"✅ +{parsed.get('amount', 0):,.2f} บาท"
-            f"{summary_text}",
-            quick_reply=True
+        flex = build_income_card(
+            note=parsed.get("note", ""),
+            amount=parsed.get("amount", 0),
+            summary=summary if summary["success"] else None
         )
+        send.flex(f"💰 {parsed.get('note', 'รายรับ')} +{parsed.get('amount', 0):,.0f} บาท",
+                  flex, quick_reply=True)
     else:
         send("😓 บันทึกไม่ได้ครับ ลองใหม่นะ")
 
@@ -74,18 +75,8 @@ def handle_today_expense(send, user_id):
     if not data["success"] or (data["total_income"] == 0 and data["total_expense"] == 0):
         send("📭 ยังไม่มีรายการวันนี้เลยครับ", quick_reply=True)
         return
-    lines = [f"📊 สรุปวันนี้ ({data['date']})\n"]
-    if data["total_income"] > 0:
-        lines.append(f"💰 รายรับ:   {data['total_income']:,.0f} บาท")
-    if data["total_expense"] > 0:
-        lines.append(f"💸 รายจ่าย:  {data['total_expense']:,.0f} บาท")
-    balance = data["balance"]
-    lines.append(f"{'✅' if balance >= 0 else '⚠️'} คงเหลือ:   {balance:,.0f} บาท")
-    if data["expense_by_category"]:
-        lines.append("\n📂 แยกตามหมวด:")
-        for cat, amt in sorted(data["expense_by_category"].items(), key=lambda x: -x[1]):
-            lines.append(f"  • {cat}: {amt:,.0f} บาท")
-    send("\n".join(lines), quick_reply=True)
+    flex = build_today_card(data)
+    send.flex("📊 สรุปวันนี้", flex, quick_reply=True)
 
 
 def handle_split_bill(send, parsed):

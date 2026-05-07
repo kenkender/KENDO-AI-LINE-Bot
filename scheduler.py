@@ -13,7 +13,9 @@ from db import (get_pending_reminders, mark_reminder_sent, get_summary,
                 get_all_user_ids, format_summary_message,
                 get_budget_status, get_budget_warn_state, mark_budget_warned,
                 list_tasks, get_all_briefing_users, get_today_reminders,
-                get_due_bills, mark_bill_reminded, create_recurring_reminder)
+                get_due_bills, mark_bill_reminded, create_recurring_reminder,
+                get_all_recurring_users, get_all_recurring_remind_users,
+                list_recurring_items)
 from calendar_service import get_thai_holiday_today
 from datetime import datetime
 import pytz
@@ -324,6 +326,33 @@ async def generate_holiday_greeting(day_type: str, holiday_name: str = "") -> st
                 "พรุ่งนี้จะได้ไปทำงานอย่างมีแรง 😊")
 
 
+async def send_recurring_reminder_to_user(user_id: str, remind_day: int):
+    """ส่ง push แจ้งเตือนรายจ่ายซ้ำให้ user คนเดียว ตาม remind_day ที่ตั้งไว้"""
+    loop = asyncio.get_running_loop()
+    try:
+        items = await loop.run_in_executor(None, list_recurring_items, user_id)
+    except Exception as e:
+        print(f"[scheduler] list_recurring_items error for {user_id}: {e}")
+        return
+    if not items:
+        return
+    total = sum(i["amount"] for i in items)
+    lines = [
+        f"🔄 แจ้งเตือนรายจ่ายประจำ วันที่ {remind_day} ของเดือนนี้\n",
+        "📋 รายการที่ต้องจ่าย:"
+    ]
+    for idx, item in enumerate(items, 1):
+        lines.append(f"  {idx}. {item['name']} — {item['amount']:,.0f} บาท")
+    lines.append(f"\n💸 รวม: {total:,.0f} บาท")
+    lines.append("\n— KENDO AI 🤖")
+    msg = "\n".join(lines)
+    try:
+        await send_push_message(user_id, msg)
+        print(f"[scheduler] Recurring reminder sent to {user_id} ({len(items)} items)")
+    except Exception as e:
+        print(f"[scheduler] recurring reminder error for {user_id}: {e}")
+
+
 async def send_holiday_greetings(now: datetime):
     """ตรวจสอบและส่งข้อความวันหยุดให้ user ทั้งหมด เวลา 08:00"""
     loop = asyncio.get_running_loop()
@@ -370,6 +399,7 @@ async def check_reminders():
     bill_checked_date = None
     briefing_sent: dict = {}  # {user_id: date}
     holiday_greeted_date = None
+    recurring_reminded_today: set = set()  # {user_id} ที่ส่งไปแล้ววันนี้
 
     while True:
         try:
@@ -398,6 +428,22 @@ async def check_reminders():
             if now.hour == 9 and now.minute == 0 and bill_checked_date != now.date():
                 bill_checked_date = now.date()
                 await check_bill_reminders()
+
+            # Recurring expense reminder — วันที่ user กำหนด เวลา 09:00
+            if now.hour == 9 and now.minute == 0:
+                # reset ทุกวันเมื่อวันเปลี่ยน
+                if bill_checked_date != now.date():
+                    recurring_reminded_today.clear()
+                try:
+                    remind_users = get_all_recurring_remind_users()
+                    for ru in remind_users:
+                        uid = ru["user_id"]
+                        rday = ru["remind_day"]
+                        if now.day == rday and uid not in recurring_reminded_today:
+                            recurring_reminded_today.add(uid)
+                            await send_recurring_reminder_to_user(uid, rday)
+                except Exception as e:
+                    print(f"[scheduler] recurring remind check error: {e}")
 
             # Morning briefing — ส่งตาม hour ของแต่ละ user
             if now.minute == 0:

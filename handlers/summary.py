@@ -1,6 +1,7 @@
-from db import get_summary, format_summary_message, get_compare_summary
+from db import get_summary, format_summary_message, get_compare_summary, get_budget_status
 from parser import analyze_with_ai
 from db import set_briefing
+from flex_builder import build_summary_card
 
 _THAI_MONTHS_FULL = {
     1: "มกราคม", 2: "กุมภาพันธ์", 3: "มีนาคม", 4: "เมษายน",
@@ -9,15 +10,24 @@ _THAI_MONTHS_FULL = {
 }
 
 
-def handle_summary(send, parsed):
+def handle_summary(send, parsed, user_id=None):
     summary = get_summary(
         month=parsed.get("summary_month"),
         year=parsed.get("summary_year")
     )
-    if summary["success"]:
-        send(format_summary_message(summary), quick_reply=True)
-    else:
+    if not summary["success"]:
         send("❌ ไม่สามารถดึงข้อมูลสรุปได้ กรุณาลองใหม่ครับ")
+        return
+
+    budget_status = None
+    if user_id:
+        bs = get_budget_status(user_id)
+        if bs.get("budget", 0) > 0:
+            budget_status = bs
+
+    month_name = _THAI_MONTHS_FULL.get(summary["month"], str(summary["month"]))
+    flex = build_summary_card(summary, budget_status)
+    send.flex(f"📊 สรุป{month_name} {summary['year']}", flex, quick_reply=True)
 
 
 def handle_analyze(send):
@@ -34,11 +44,9 @@ def handle_compare(send, parsed):
     import pytz
     now = datetime.now(pytz.timezone("Asia/Bangkok"))
 
-    # เดือน B = เดือนอ้างอิง (default = เดือนนี้)
     month_b = parsed.get("summary_month") or now.month
     year_b = parsed.get("summary_year") or now.year
 
-    # เดือน A = เดือนก่อนหน้า
     if month_b == 1:
         month_a, year_a = 12, year_b - 1
     else:
@@ -81,7 +89,6 @@ def handle_compare(send, parsed):
         f"{'✅' if b['balance']>=0 else '⚠️'} คงเหลือ   {a['balance']:>10,.0f}  {b['balance']:>10,.0f}  {bal_arrow} {_diff(b['balance'], a['balance'])}",
     ]
 
-    # หมวดที่เปลี่ยนแปลงมากที่สุด
     all_cats = set(a["expense_by_category"]) | set(b["expense_by_category"])
     diffs = {
         cat: b["expense_by_category"].get(cat, 0) - a["expense_by_category"].get(cat, 0)

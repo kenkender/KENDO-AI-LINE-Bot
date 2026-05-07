@@ -201,6 +201,27 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 - LOTTERY = ดูผลสลากกินแบ่งรัฐบาล
     ตัวอย่าง: "ผลสลากวันนี้" "ผลหวย" "ออกสลากงวดล่าสุด" "เช็คหวย" "ผลสลากกินแบ่ง" "หวยออกอะไรบ้าง" "เลขที่ออก"
 
+- RECURRING_ADD = เพิ่มรายจ่ายซ้ำประจำเดือนหลายรายการพร้อมกัน (subscriptions, ค่าบริการ)
+    ตัวอย่าง:
+      "เพิ่มรายจ่ายซ้ำ Netflix 299 Spotify 99"
+      "รายจ่ายซ้ำ 1.Netflix 299 2.Spotify 99 3.ค่าเน็ตบ้าน 599"
+      "เตือนรายจ่ายประจำเดือน มีรายการ Netflix 299, Spotify 99"
+      "บันทึกค่า subscription Netflix 299 YouTube 219"
+    items = array ของ {name, amount, category} — parse ทุกรายการในข้อความ
+    category ให้เดาจาก context: Netflix/YouTube/Disney+ → "บันเทิง", ค่าเน็ต/โทรศัพท์ → "บิล" ฯลฯ
+
+- RECURRING_LIST = ดูรายจ่ายซ้ำทั้งหมด
+    ตัวอย่าง: "รายจ่ายซ้ำมีอะไรบ้าง" "ดูรายจ่ายประจำ" "subscription ที่มีอยู่"
+
+- RECURRING_DELETE = ลบรายจ่ายซ้ำรายการใดรายการหนึ่ง
+    ตัวอย่าง: "ลบรายจ่ายซ้ำ Netflix" "เอา Spotify ออกจากรายจ่ายประจำ"
+    note = ชื่อรายการที่ต้องการลบ
+
+- RECURRING_SET_REMIND = ตั้งวันแจ้งเตือนรายจ่ายซ้ำ (วันที่ต้องการรับแจ้งเตือนทุกเดือน)
+    ตัวอย่าง: "เตือนรายจ่ายซ้ำทุกวันที่ 25" "ตั้งแจ้งเตือนรายจ่ายประจำวันที่ 28" "แจ้งเตือน subscription วันที่ 1"
+              "ปิดแจ้งเตือนรายจ่ายซ้ำ" "ยกเลิกการแจ้งเตือนรายจ่ายประจำ"
+    remind_day = วันที่ต้องการ (1-31) หรือ 0 ถ้าต้องการปิดแจ้งเตือน
+
 - COMPARE = เปรียบเทียบรายรับรายจ่ายระหว่าง 2 เดือน
     ตัวอย่าง: "เปรียบเทียบเดือนนี้กับเดือนที่แล้ว" "เดือนนี้ใช้เงินมากกว่าเดือนที่แล้วไหม" "compare เดือน 4 กับ เดือน 5" "เดือนที่แล้วกับเดือนนี้ต่างกันยังไง"
     summary_month = เดือนอ้างอิง (เดือนปัจจุบัน ถ้าไม่ระบุ)
@@ -259,7 +280,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | COMPARE | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -277,6 +298,8 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "holiday_year": "int (ปี ค.ศ.) | null — ใช้เฉพาะ HOLIDAY: ปีที่ต้องการดู (null = ปีปัจจุบัน)",
   "holiday_month": "int (1-12) | null — ใช้เฉพาะ HOLIDAY: เดือนที่ต้องการดู (null = ทั้งปี)",
   "near_only": "bool | null — ใช้เฉพาะ HOLIDAY: true ถ้าถามวันหยุดใกล้ๆ ที่จะมาถึง",
+  "items": [{"name": "string", "amount": float, "category": "string"}] หรือ null — ใช้เฉพาะ RECURRING_ADD: รายการซ้ำทั้งหมดที่ user พิมพ์มา,
+  "remind_day": int (1-31) หรือ 0 (ปิด) หรือ null — ใช้เฉพาะ RECURRING_SET_REMIND: วันที่ต้องการรับแจ้งเตือน,
   "confidence": 0.0-1.0
 }
 """

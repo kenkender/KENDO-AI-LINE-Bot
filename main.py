@@ -13,8 +13,10 @@ from fastapi.responses import Response
 from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
-    ReplyMessageRequest, TextMessage, QuickReply, QuickReplyItem, MessageAction
+    ReplyMessageRequest, TextMessage, FlexMessage,
+    QuickReply, QuickReplyItem, MessageAction
 )
+from linebot.v3.messaging.models import FlexContainer
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 from dotenv import load_dotenv
@@ -37,6 +39,7 @@ from handlers.info import (
     handle_weather, handle_air_quality, handle_holiday, handle_oil_price,
     handle_gold_price, handle_lottery
 )
+from handlers.recurring import handle_recurring_add, handle_recurring_list, handle_recurring_delete, handle_recurring_set_remind
 
 load_dotenv()
 
@@ -125,19 +128,47 @@ MENU_PROMPTS = {
 }
 
 
-def reply(reply_token: str, message: str, quick_reply: bool = False, name: str = ""):
-    if name:
-        message = re.sub(r"ครับ(?=[!\n\".]|$)", f"ครับ {name}", message)
-    with ApiClient(configuration) as api_client:
-        MessagingApi(api_client).reply_message_with_http_info(
-            ReplyMessageRequest(
-                reply_token=reply_token,
-                messages=[TextMessage(
-                    text=message,
-                    quick_reply=MAIN_QUICK_REPLY if quick_reply else None
-                )]
+class Sender:
+    """Wrapper ที่ส่งได้ทั้ง text และ Flex Message โดย backward compatible กับ send(text)"""
+
+    def __init__(self, reply_token: str, name: str):
+        self._reply_token = reply_token
+        self._name = name
+
+    def __call__(self, message: str, quick_reply: bool = False):
+        self.text(message, quick_reply)
+
+    def text(self, message: str, quick_reply: bool = False):
+        if self._name:
+            message = re.sub(r"ครับ(?=[!\n\".]|$)", f"ครับ {self._name}", message)
+        with ApiClient(configuration) as api_client:
+            MessagingApi(api_client).reply_message_with_http_info(
+                ReplyMessageRequest(
+                    reply_token=self._reply_token,
+                    messages=[TextMessage(
+                        text=message,
+                        quick_reply=MAIN_QUICK_REPLY if quick_reply else None
+                    )]
+                )
             )
-        )
+
+    def flex(self, alt_text: str, flex_dict: dict, quick_reply: bool = False):
+        try:
+            flex_msg = FlexMessage(
+                alt_text=alt_text,
+                contents=FlexContainer.from_dict(flex_dict),
+                quick_reply=MAIN_QUICK_REPLY if quick_reply else None
+            )
+            with ApiClient(configuration) as api_client:
+                MessagingApi(api_client).reply_message_with_http_info(
+                    ReplyMessageRequest(
+                        reply_token=self._reply_token,
+                        messages=[flex_msg]
+                    )
+                )
+        except Exception as e:
+            print(f"[Sender.flex] error: {e}, falling back to text")
+            self.text(alt_text, quick_reply)
 
 
 @app.get("/")
@@ -178,8 +209,7 @@ def handle_message(event: MessageEvent):
         reply_token = event.reply_token
         name = get_user_name(user_id)
 
-        def send(message, quick_reply=False):
-            reply(reply_token, message, quick_reply=quick_reply, name=name)
+        send = Sender(reply_token, name)
 
         print(f"[handle_message] '{raw_text}' from {user_id}")
 
@@ -240,7 +270,7 @@ def handle_message(event: MessageEvent):
             case "NOTE":            handle_note(send, user_id, raw_text, parsed)
             case "REMINDER":        handle_reminder(send, user_id, raw_text, parsed)
             case "CANCEL":          handle_cancel(send, user_id, parsed)
-            case "SUMMARY":         handle_summary(send, parsed)
+            case "SUMMARY":         handle_summary(send, parsed, user_id)
             case "ANALYZE":         handle_analyze(send)
             case "DELETE":          handle_delete(send, user_id)
             case "SEARCH":          handle_search(send, user_id, parsed)
@@ -269,6 +299,10 @@ def handle_message(event: MessageEvent):
             case "GOLD_PRICE":      handle_gold_price(send)
             case "LOTTERY":         handle_lottery(send)
             case "COMPARE":         handle_compare(send, parsed)
+            case "RECURRING_ADD":   handle_recurring_add(send, user_id, parsed)
+            case "RECURRING_LIST":  handle_recurring_list(send, user_id)
+            case "RECURRING_DELETE": handle_recurring_delete(send, user_id, parsed)
+            case "RECURRING_SET_REMIND": handle_recurring_set_remind(send, user_id, parsed)
             case "CHAT":
                 response = parsed.get("response", "").strip()
                 send(response if response else "🤖 KENDO AI พร้อมช่วยครับ ลองถามใหม่ได้เลย", quick_reply=True)

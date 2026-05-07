@@ -1,4 +1,5 @@
 from db import add_bill, list_bills, delete_bill
+from flex_builder import build_bill_list_carousel
 
 
 def handle_bill_add(send, user_id, parsed):
@@ -25,18 +26,19 @@ def handle_bill_add(send, user_id, parsed):
 def handle_bill_list(send, user_id):
     bills = list_bills(user_id)
     if not bills:
-        send(
-            "💳 ยังไม่มีบิลประจำครับ\n"
-            "พิมพ์ \"ตั้งบิล ค่าไฟ 800 ทุกวันที่ 20\" ได้เลย",
+        send.flex(
+            "💳 บิลประจำ",
+            build_bill_list_carousel([]),
             quick_reply=True
         )
         return
-    lines = [f"💳 บิลประจำทั้งหมด {len(bills)} รายการ\n"]
-    for b in sorted(bills, key=lambda x: x["due_day"]):
-        lines.append(f"  • {b['name']} — {b['amount']:,.0f} บาท (วันที่ {b['due_day']})")
+    flex = build_bill_list_carousel(bills)
     total = sum(b["amount"] for b in bills)
-    lines.append(f"\n💸 รวมต่อเดือน: {total:,.0f} บาท")
-    send("\n".join(lines), quick_reply=True)
+    send.flex(
+        f"💳 บิลประจำ {len(bills)} รายการ รวม {total:,.0f} บาท/เดือน",
+        flex,
+        quick_reply=True
+    )
 
 
 def handle_bill_delete(send, user_id, parsed):
