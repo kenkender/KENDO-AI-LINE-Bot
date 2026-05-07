@@ -17,7 +17,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
 CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
@@ -358,14 +358,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
                 "key": CEREBRAS_API_KEY,
                 "url": CEREBRAS_API_URL,
                 "headers": {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
-                "models": ["llama3.3-70b"],
-                "json_mode": False,
-            },
-            {
-                "key": GEMINI_API_KEY,
-                "url": f"{GEMINI_API_URL}?key={GEMINI_API_KEY}" if GEMINI_API_KEY else GEMINI_API_URL,
-                "headers": {"Content-Type": "application/json"},
-                "models": ["gemini-1.5-flash"],
+                "models": ["llama3.1-8b", "llama3.1-70b"],
                 "json_mode": False,
             },
         ]
@@ -424,6 +417,29 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     print(f"[parser] {model_name} error: {e}, trying next...")
                     last_error = str(e)
                     continue
+
+        # Gemini native API fallback
+        if GEMINI_API_KEY:
+            try:
+                gemini_url = f"{GEMINI_API_URL}?key={GEMINI_API_KEY}"
+                gemini_payload = {
+                    "contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\n\n{user_content}"}]}],
+                    "generationConfig": {"temperature": 0.1}
+                }
+                with httpx.Client(timeout=30) as client:
+                    resp = client.post(gemini_url, headers={"Content-Type": "application/json"}, json=gemini_payload)
+                if resp.status_code == 200:
+                    text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    text = re.sub(r"```json|```", "", text).strip()
+                    parsed = json.loads(text)
+                    print(f"[parser] Used model: gemini-1.5-flash (native)")
+                    return {"success": True, "data": parsed}
+                else:
+                    print(f"[parser] gemini-1.5-flash native error: {resp.status_code}")
+                    last_error = "gemini_error"
+            except Exception as e:
+                print(f"[parser] gemini native error: {e}")
+                last_error = str(e)
 
         if last_error in ("quota_exceeded", "payload_too_large"):
             return {"success": False, "error": "quota_exceeded",
