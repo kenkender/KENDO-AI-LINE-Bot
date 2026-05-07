@@ -186,6 +186,15 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
     briefing_hour = เวลา 0-23 (null ถ้าต้องการปิด briefing), note = ชื่อเมืองสำหรับอากาศ (null ถ้าไม่ระบุ)
     "ปิด briefing" → briefing_hour: null
 
+- HOLIDAY  = ดูวันหยุดนักขัตฤกษ์ไทย
+    ตัวอย่าง: "วันหยุดเดือนนี้มีอะไรบ้าง" "วันหยุดที่ใกล้จะมาถึง" "วันหยุดเดือนมิถุนายน" "วันหยุดปีนี้ทั้งหมด" "วันหยุดราชการเดือนหน้า"
+    holiday_year = ปี ค.ศ. (null = ปีปัจจุบัน)
+    holiday_month = เดือน 1-12 (null = ทั้งปี)
+    near_only = true ถ้า user ถามว่าวันหยุดใกล้ๆ / วันหยุดที่จะมาถึง (false ถ้าระบุเดือน/ปีชัดเจน)
+
+- OIL_PRICE = ดูราคาน้ำมัน
+    ตัวอย่าง: "ราคาน้ำมันวันนี้" "น้ำมันราคาเท่าไหร่" "ดีเซลราคาเท่าไหร่" "แก๊สโซฮอล์ 91 ราคาเท่าไหร่" "เติมน้ำมันวันนี้ราคายังไง"
+
 - CHAT     = คำถามทั่วไป ขอคำแนะนำ ทักทาย หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "แปลญี่ปุ่นให้" "คอมช้าทำไง" "แมวกินอะไรได้บ้าง"
               "แนะนำเกมหน่อย" "อยากออกกำลังกายแต่ขี้เกียจ" "วิเคราะห์ข่าวนี้"
@@ -200,6 +209,8 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
          📰 ดูข่าว (ไทย/โลก/เทคโนโลยี)
          💳 บันทึกบิลประจำ (bill), แจ้งเตือนบิล, หารบิล
          🌅 ตั้ง Morning Briefing อัตโนมัติ
+         📅 ดูวันหยุดนักขัตฤกษ์ไทย
+         ⛽ ดูราคาน้ำมัน (OR/PTT)
          🌐 แปลภาษา, คุยทั่วไป, ถามเรื่อง IT/แมว/เกม/งานตำรวจ
        ฟีเจอร์ที่บอทนี้ทำไม่ได้: การติดตามแคลอรี่/อาหาร, การจัดการสุขภาพ,
          การซื้อ-ขายหุ้น, การเชื่อมต่อบัญชีธนาคาร, อื่นๆ ที่ไม่ได้ระบุข้างบน
@@ -234,7 +245,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -249,6 +260,9 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "split_count": "int | null — ใช้เฉพาะ SPLIT_BILL: จำนวนคนที่หาร (>= 2)",
   "bill_due_day": "int (1-31) | null — ใช้เฉพาะ BILL_ADD: วันที่ครบกำหนดในแต่ละเดือน",
   "briefing_hour": "int (0-23) | null — ใช้เฉพาะ BRIEFING_SET: ชั่วโมงที่ต้องการรับ briefing, null = ปิด",
+  "holiday_year": "int (ปี ค.ศ.) | null — ใช้เฉพาะ HOLIDAY: ปีที่ต้องการดู (null = ปีปัจจุบัน)",
+  "holiday_month": "int (1-12) | null — ใช้เฉพาะ HOLIDAY: เดือนที่ต้องการดู (null = ทั้งปี)",
+  "near_only": "bool | null — ใช้เฉพาะ HOLIDAY: true ถ้าถามวันหยุดใกล้ๆ ที่จะมาถึง",
   "confidence": 0.0-1.0
 }
 """

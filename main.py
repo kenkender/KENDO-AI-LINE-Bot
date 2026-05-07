@@ -44,6 +44,8 @@ from scheduler import check_reminders
 from news_service import get_thai_news, get_world_news, get_tech_news, search_news
 from weather_service import get_weather
 from airquality_service import get_air_quality
+from holiday_service import get_holidays, format_holidays_message
+from oilprice_service import get_oil_prices, format_oil_price_message
 
 load_dotenv()
 
@@ -777,6 +779,18 @@ def handle_message(event: MessageEvent):
                     f"📍 สถานที่: {city}\n\n"
                     f"ทุกเช้าจะส่งสรุปอากาศ + ค่าฝุ่น + เตือนวันนี้ให้ครับ",
                     quick_reply=True)
+
+        elif intent == "HOLIDAY":
+            year = parsed.get("holiday_year")
+            month = parsed.get("holiday_month")
+            near_only = bool(parsed.get("near_only", False))
+            result = get_holidays(year=year, month=month)
+            msg = format_holidays_message(result, near_only=near_only)
+            send(msg, quick_reply=True)
+
+        elif intent == "OIL_PRICE":
+            result = get_oil_prices()
+            send(format_oil_price_message(result), quick_reply=True)
 
         elif intent == "CHAT":
             response = parsed.get("response", "").strip()
