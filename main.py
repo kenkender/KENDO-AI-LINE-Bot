@@ -44,7 +44,7 @@ from handlers.recurring import handle_recurring_add, handle_recurring_list, hand
 load_dotenv()
 
 conversation_history: dict = {}
-MAX_HISTORY_PAIRS = 10
+MAX_HISTORY_PAIRS = 3
 user_name_cache: dict = {}
 
 
