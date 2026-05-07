@@ -16,6 +16,9 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
@@ -348,6 +351,13 @@ def parse_message(user_text: str, history: list = None) -> dict:
 
         providers = [
             {
+                "key": DEEPSEEK_API_KEY,
+                "url": DEEPSEEK_API_URL,
+                "headers": {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
+                "models": ["deepseek-chat"],
+                "json_mode": True,
+            },
+            {
                 "key": GROQ_API_KEY,
                 "url": GROQ_API_URL,
                 "headers": {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
@@ -410,7 +420,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     text = re.sub(r"```json|```", "", text).strip()
                     parsed = json.loads(text)
 
-                    is_fallback = model_name not in ("llama-3.3-70b-versatile",)
+                    is_fallback = model_name not in ("deepseek-chat",)
                     print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
                     return {"success": True, "data": parsed, "model": model_name, "fallback": is_fallback}
 

@@ -51,6 +51,7 @@ user_name_cache: dict = {}
 _fallback_alerted: set = set()  # เก็บ user_id ที่แจ้งเตือนไปแล้วในรอบนี้
 
 MODEL_INFO = {
+    "deepseek-chat":           ("DeepSeek", "ไม่จำกัด (paid)", "ไม่มีการรีเซ็ต"),
     "llama-3.3-70b-versatile": ("Groq", "14,400 req/วัน", "รีเซ็ต 07:00 น. ทุกวัน"),
     "llama-3.1-8b-instant":    ("Groq", "14,400 req/วัน", "รีเซ็ต 07:00 น. ทุกวัน"),
     "llama3.1-8b":             ("Cerebras", "ไม่จำกัด (free tier)", "ไม่มีการรีเซ็ต"),
