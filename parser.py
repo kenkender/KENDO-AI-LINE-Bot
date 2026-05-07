@@ -351,19 +351,22 @@ def parse_message(user_text: str, history: list = None) -> dict:
                 "key": GROQ_API_KEY,
                 "url": GROQ_API_URL,
                 "headers": {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "deepseek-r1-distill-llama-70b"],
+                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"],
+                "json_mode": True,
             },
             {
                 "key": CEREBRAS_API_KEY,
                 "url": CEREBRAS_API_URL,
                 "headers": {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
-                "models": ["llama-3.3-70b"],
+                "models": ["llama3.3-70b"],
+                "json_mode": False,
             },
             {
                 "key": GEMINI_API_KEY,
-                "url": GEMINI_API_URL,
-                "headers": {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"},
-                "models": ["gemini-1.5-flash", "gemini-2.0-flash-exp"],
+                "url": f"{GEMINI_API_URL}?key={GEMINI_API_KEY}" if GEMINI_API_KEY else GEMINI_API_URL,
+                "headers": {"Content-Type": "application/json"},
+                "models": ["gemini-1.5-flash"],
+                "json_mode": False,
             },
         ]
 
@@ -380,8 +383,9 @@ def parse_message(user_text: str, history: list = None) -> dict:
                             {"role": "user", "content": user_content}
                         ],
                         "temperature": 0.1,
-                        "response_format": {"type": "json_object"}
                     }
+                    if provider.get("json_mode"):
+                        payload["response_format"] = {"type": "json_object"}
 
                     with httpx.Client(timeout=30) as client:
                         resp = client.post(provider["url"], headers=provider["headers"], json=payload)
