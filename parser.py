@@ -16,6 +16,9 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+
 SYSTEM_PROMPT = """
 คุณคือ KENDO AI ผู้ช่วยส่วนตัวของ Kendo
 หน้าที่หลัก: วิเคราะห์ข้อความภาษาไทย (ทั้งแบบทางการและภาษาพูดชีวิตประจำวัน)
@@ -340,70 +343,72 @@ def parse_message(user_text: str, history: list = None) -> dict:
 ข้อความจากผู้ใช้: "{user_text}"
 """
 
-        models_to_try = [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "llama3-8b-8192",
-            "mixtral-8x7b-32768",
+        providers = [
+            {
+                "url": GROQ_API_URL,
+                "headers": {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768"],
+            },
+            {
+                "url": GEMINI_API_URL,
+                "headers": {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"},
+                "models": ["gemini-1.5-flash"],
+            },
         ]
 
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
         last_error = None
-        for model_name in models_to_try:
-            try:
-                payload = {
-                    "model": model_name,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_content}
-                    ],
-                    "temperature": 0.1,
-                    "response_format": {"type": "json_object"}
-                }
+        for provider in providers:
+            for model_name in provider["models"]:
+                try:
+                    payload = {
+                        "model": model_name,
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_content}
+                        ],
+                        "temperature": 0.1,
+                        "response_format": {"type": "json_object"}
+                    }
 
-                with httpx.Client(timeout=30) as client:
-                    resp = client.post(GROQ_API_URL, headers=headers, json=payload)
+                    with httpx.Client(timeout=30) as client:
+                        resp = client.post(provider["url"], headers=provider["headers"], json=payload)
 
-                if resp.status_code == 429:
-                    print(f"[parser] {model_name} quota exceeded, trying next...")
-                    last_error = "quota_exceeded"
+                    if resp.status_code == 429:
+                        print(f"[parser] {model_name} quota exceeded, trying next...")
+                        last_error = "quota_exceeded"
+                        continue
+
+                    if resp.status_code == 413:
+                        print(f"[parser] {model_name} payload too large, trying next...")
+                        last_error = "payload_too_large"
+                        continue
+
+                    if resp.status_code == 401:
+                        print(f"[parser] {model_name} auth error (401), trying next...")
+                        last_error = "auth_error"
+                        continue
+
+                    resp.raise_for_status()
+
+                    data = resp.json()
+                    text = data["choices"][0]["message"]["content"].strip()
+                    text = re.sub(r"```json|```", "", text).strip()
+                    parsed = json.loads(text)
+
+                    print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
+                    return {"success": True, "data": parsed}
+
+                except (httpx.TimeoutException, httpx.ConnectError) as e:
+                    print(f"[parser] {model_name} connection error: {e}, trying next...")
+                    last_error = str(e)
                     continue
-
-                if resp.status_code == 413:
-                    print(f"[parser] {model_name} payload too large, trying next...")
-                    last_error = "payload_too_large"
-                    continue
-
-                if resp.status_code == 401:
-                    print(f"[parser] GROQ_API_KEY ไม่ถูกต้อง (401)")
-                    return {"success": False, "error": "auth_error",
-                            "message": "GROQ_API_KEY ไม่ถูกต้อง"}
-
-                resp.raise_for_status()
-
-                data = resp.json()
-                text = data["choices"][0]["message"]["content"].strip()
-                text = re.sub(r"```json|```", "", text).strip()
-                parsed = json.loads(text)
-
-                print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
-                return {"success": True, "data": parsed}
-
-            except (httpx.TimeoutException, httpx.ConnectError) as e:
-                print(f"[parser] {model_name} connection error: {e}, trying next...")
-                last_error = str(e)
-                continue
 
         if last_error in ("quota_exceeded", "payload_too_large"):
             return {"success": False, "error": "quota_exceeded",
-                    "message": "Groq quota หมดทุก model"}
+                    "message": "AI quota หมดทุก provider"}
 
         return {"success": False, "error": "api_error",
-                "message": f"ไม่สามารถเรียก Groq API ได้: {last_error}"}
+                "message": f"ไม่สามารถเรียก AI API ได้: {last_error}"}
 
     except json.JSONDecodeError as e:
         return {"success": False, "error": "parse_error",
