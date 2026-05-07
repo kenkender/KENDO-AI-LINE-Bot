@@ -347,7 +347,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
             {
                 "url": GROQ_API_URL,
                 "headers": {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768"],
+                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"],
             },
             {
                 "url": GEMINI_API_URL,
@@ -381,6 +381,11 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     if resp.status_code == 413:
                         print(f"[parser] {model_name} payload too large, trying next...")
                         last_error = "payload_too_large"
+                        continue
+
+                    if resp.status_code in (400, 422):
+                        print(f"[parser] {model_name} bad request ({resp.status_code}), trying next...")
+                        last_error = "bad_request"
                         continue
 
                     if resp.status_code == 401:
