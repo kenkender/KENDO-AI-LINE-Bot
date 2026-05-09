@@ -33,13 +33,14 @@ def _cache_set(key: str, data):
 # ── RSS Feed Sources ──────────────────────────────────────────────────────────
 RSS_SOURCES = {
     "general": [
-        ("ไทยรัฐ",  "https://www.thairath.co.th/rss/news.xml"),
-        ("มติชน",   "https://www.matichon.co.th/feed"),
-        ("ข่าวสด",  "https://www.khaosod.co.th/feed"),
+        ("มติชน",        "https://www.matichon.co.th/feed"),
+        ("ข่าวสด",       "https://www.khaosod.co.th/feed"),
+        ("The Standard", "https://thestandard.co/feed/"),
     ],
     "tech": [
         ("Blognone",     "https://www.blognone.com/node/feed"),
         ("TechTalkThai", "https://www.techtalkthai.com/feed/"),
+        ("The Standard Tech", "https://thestandard.co/category/tech/feed/"),
     ],
     "crime": [
         ("มติชน อาชญากรรม", "https://www.matichon.co.th/crime/feed"),
@@ -47,6 +48,11 @@ RSS_SOURCES = {
     ],
     "travel": [
         ("TAT News", "https://www.tatnews.org/feed/"),
+        ("มติชน ท่องเที่ยว", "https://www.matichon.co.th/tag/%e0%b8%97%e0%b9%88%e0%b8%ad%e0%b8%87%e0%b9%80%e0%b8%97%e0%b8%b5%e0%b9%88%e0%b8%a2%e0%b8%a7/feed"),
+    ],
+    "weather": [
+        ("ข่าวสด สิ่งแวดล้อม", "https://www.khaosod.co.th/around-the-world/feed"),
+        ("มติชน", "https://www.matichon.co.th/feed"),
     ],
 }
 
@@ -57,6 +63,10 @@ CATEGORY_MAP = {
     "เทคโนโลยี": "tech",
     "ไอที": "tech",
     "ท่องเที่ยว": "travel",
+    "อากาศ": "weather",
+    "อุตุ": "weather",
+    "สภาพอากาศ": "weather",
+    "พยากรณ์": "weather",
 }
 
 
