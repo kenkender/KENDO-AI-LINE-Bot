@@ -47,7 +47,7 @@ from handlers.recurring import handle_recurring_add, handle_recurring_list, hand
 load_dotenv()
 
 conversation_history: dict = {}
-MAX_HISTORY_PAIRS = 3
+MAX_HISTORY_PAIRS = 5
 user_name_cache: dict = {}
 _fallback_alerted: set = set()  # เก็บ user_id ที่แจ้งเตือนไปแล้วในรอบนี้
 
@@ -296,7 +296,7 @@ def handle_message(event: MessageEvent):
             {"role": "user", "parts": [raw_text]},
             {"role": "model", "parts": [json.dumps(parsed, ensure_ascii=False)]}
         ]
-        max_entries = MAX_HISTORY_PAIRS * 2
+        max_entries = MAX_HISTORY_PAIRS * 4
         conversation_history[user_id] = updated[-max_entries:]
 
         # ── Confidence check ──
