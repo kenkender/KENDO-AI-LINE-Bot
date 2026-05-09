@@ -1,19 +1,25 @@
 """
 weather_service.py
-พยากรณ์อากาศไทย รองรับจังหวัด อำเภอ เขต และสถานที่ทั่วไป
+พยากรณ์อากาศไทย รองรับจังหวัด อำเภอ เขต สถานที่ และพิกัด GPS
 Layer 1: ตาราง hardcode 77 จังหวัด (เร็ว)
 Layer 2: Nominatim (OpenStreetMap) geocoding (รองรับทุกระดับ)
 Layer 3: Open-Meteo API (ฟรี ไม่ต้อง API key)
+Layer 4: กรมอุตุนิยมวิทยา 7-day forecast (แยกรายจังหวัด)
 """
 
 import httpx
+import math
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
 import pytz
 
 _cache: dict = {}
 CACHE_TTL_WEATHER = 30 * 60   # อากาศ 30 นาที
 CACHE_TTL_GEO     = 24 * 3600  # geocoding 24 ชั่วโมง
+CACHE_TTL_TMD     = 6 * 3600   # TMD 6 ชั่วโมง
+
+TMD_7DAY_URL = "https://data.tmd.go.th/api/WeatherForecast7Days/v2/?uid=api&ukey=api12345"
 
 
 def _cache_get(key: str):
@@ -25,6 +31,142 @@ def _cache_get(key: str):
 
 def _cache_set(key: str, data, ttl: int = CACHE_TTL_WEATHER):
     _cache[key] = {"data": data, "expires_at": time.time() + ttl}
+
+
+# ── TMD 7-day forecast ────────────────────────────────────────────────────────
+def _fetch_tmd_xml() -> str | None:
+    cached = _cache_get("tmd_7day")
+    if cached:
+        return cached
+    try:
+        with httpx.Client(timeout=20) as client:
+            resp = client.get(TMD_7DAY_URL)
+        if resp.status_code == 200:
+            _cache_set("tmd_7day", resp.text, ttl=CACHE_TTL_TMD)
+            return resp.text
+    except Exception as e:
+        print(f"[weather_service] TMD fetch error: {e}")
+    return None
+
+
+def _parse_tmd_province(xml_text: str, province_name: str) -> list[dict]:
+    """Parse XML กรมอุตุ → list ของแต่ละวัน (เรียงจากใหม่สุด)"""
+    try:
+        root = ET.fromstring(xml_text)
+        for prov in root.findall(".//Province"):
+            name_el = prov.find("ProvinceNameThai")
+            if name_el is None or not name_el.text:
+                continue
+            thai_name = name_el.text.strip()
+            if province_name not in thai_name and thai_name not in province_name:
+                continue
+
+            forecast = prov.find("SevenDaysForecast")
+            if forecast is None:
+                return []
+
+            # XML structure is flat — group elements by ForecastDate
+            days: list[dict] = []
+            cur: dict = {}
+            for child in forecast:
+                if child.tag == "ForecastDate":
+                    if cur.get("date"):
+                        days.append(cur)
+                    cur = {"date": (child.text or "").strip()}
+                else:
+                    cur[child.tag] = (child.text or "").strip()
+            if cur.get("date"):
+                days.append(cur)
+
+            # sort newest first, take 3 days
+            for d in days:
+                try:
+                    d["_dt"] = datetime.strptime(d["date"], "%d/%m/%Y")
+                except Exception:
+                    d["_dt"] = datetime.min
+            days.sort(key=lambda x: x["_dt"], reverse=True)
+            return days[:3]
+    except Exception as e:
+        print(f"[weather_service] TMD parse error: {e}")
+    return []
+
+
+def _format_tmd_section(days: list[dict]) -> str:
+    """แปลงข้อมูล TMD 3 วัน → ข้อความ"""
+    if not days:
+        return ""
+    lines = ["", "📊 พยากรณ์ล่วงหน้าจาก กรมอุตุนิยมวิทยา"]
+    for d in days:
+        date_str = d.get("date", "")
+        t_max = d.get("MaximumTemperature", "-")
+        t_min = d.get("MinimumTemperature", "-")
+        rain  = d.get("PercentRainCover", "-")
+        desc  = d.get("DescriptionThai", "")
+        lines.append(
+            f"  📅 {date_str}: {t_min}–{t_max}°C  ☔ {rain}%  {desc}"
+        )
+    return "\n".join(lines)
+
+
+def get_nearest_province(lat: float, lon: float) -> str:
+    """หาชื่อจังหวัดที่ใกล้ที่สุดจากพิกัด GPS"""
+    min_dist = float("inf")
+    nearest = "กรุงเทพ"
+    seen: set = set()
+    for name, (plat, plon) in PROVINCES.items():
+        coord_key = (plat, plon)
+        if coord_key in seen:
+            continue
+        seen.add(coord_key)
+        dist = math.sqrt((lat - plat) ** 2 + (lon - plon) ** 2)
+        if dist < min_dist:
+            min_dist = dist
+            nearest = name
+    return nearest
+
+
+def get_weather_by_coords(lat: float, lon: float) -> dict:
+    """ดึงพยากรณ์อากาศจากพิกัด GPS โดยตรง"""
+    province = get_nearest_province(lat, lon)
+    # ใช้พิกัด GPS จริงสำหรับ Open-Meteo แต่ใช้ชื่อจังหวัดสำหรับ TMD
+    cache_key = f"weather_{round(lat, 3)}_{round(lon, 3)}"
+    cached = _cache_get(cache_key)
+    display_name = f"พิกัด GPS (ใกล้{province})"
+
+    if cached:
+        weather = _format_weather(cached, display_name)
+    else:
+        try:
+            with httpx.Client(timeout=10) as client:
+                resp = client.get(
+                    "https://api.open-meteo.com/v1/forecast",
+                    params={
+                        "latitude": lat,
+                        "longitude": lon,
+                        "current": "temperature_2m,apparent_temperature,relative_humidity_2m,"
+                                   "precipitation_probability,weathercode,windspeed_10m",
+                        "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+                        "timezone": "Asia/Bangkok",
+                        "forecast_days": 1,
+                    },
+                )
+            if resp.status_code != 200:
+                return {"success": False, "message": "❌ ไม่สามารถดึงข้อมูลอากาศได้ครับ"}
+            data = resp.json()
+            _cache_set(cache_key, data)
+            weather = _format_weather(data, display_name)
+        except Exception as e:
+            print(f"[weather_service] GPS open-meteo error: {e}")
+            return {"success": False, "message": "❌ ดึงข้อมูลอากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ"}
+
+    # append TMD
+    xml_text = _fetch_tmd_xml()
+    if xml_text:
+        tmd_days = _parse_tmd_province(xml_text, province)
+        tmd_section = _format_tmd_section(tmd_days)
+        if tmd_section:
+            weather["message"] += tmd_section
+    return weather
 
 
 # ── Layer 1: ตารางพิกัด 77 จังหวัด (ค้นหาได้ทันที) ───────────────────────────
@@ -247,7 +389,17 @@ def get_weather(place: str) -> dict:
 
         data = resp.json()
         _cache_set(cache_key, data, ttl=CACHE_TTL_WEATHER)
-        return _format_weather(data, display_name or place)
+        weather = _format_weather(data, display_name or place)
+
+        # TMD 7-day forecast (province level)
+        xml_text = _fetch_tmd_xml()
+        if xml_text:
+            tmd_days = _parse_tmd_province(xml_text, display_name or place)
+            tmd_section = _format_tmd_section(tmd_days)
+            if tmd_section:
+                weather["message"] += tmd_section
+
+        return weather
 
     except Exception as e:
         print(f"[weather_service] open-meteo error: {e}")
