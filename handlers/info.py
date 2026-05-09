@@ -1,4 +1,5 @@
 from news_service import get_thai_news, get_world_news, get_tech_news, search_news
+from serpapi_trends_service import get_trending_now
 from weather_service import get_weather
 from airquality_service import get_air_quality
 from holiday_service import get_holidays, format_holidays_message
@@ -62,3 +63,8 @@ def handle_gold_price(send):
 
 def handle_lottery(send):
     send(format_lottery_message(get_lottery_result()), quick_reply=True)
+
+
+def handle_trends(send):
+    result = get_trending_now()
+    send(result["message"], quick_reply=True)

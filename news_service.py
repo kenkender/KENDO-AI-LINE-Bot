@@ -1,6 +1,6 @@
 """
 news_service.py
-ระบบดึงข่าว 3 ชั้น: RSS Feed ไทย → Brave Search → NewsData.io
+ระบบดึงข่าว 4 ชั้น: SerpAPI Google News → RSS Feed ไทย → Brave Search → NewsData.io
 """
 
 import httpx
@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
+SERPAPI_URL = "https://serpapi.com/search"
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY", "")
 
@@ -115,6 +117,65 @@ def _clean(text: str, max_len: int) -> str:
     text = re.sub(r"<[^>]+>", "", text or "")
     text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&#8230;", "...").strip()
     return text[:max_len] + "…" if len(text) > max_len else text
+
+
+# ── Layer 0: SerpAPI Google News ────────────────────────────────────────────
+_SERPAPI_QUERY_MAP = {
+    "general":  "ข่าวไทยวันนี้",
+    "tech":     "ข่าวเทคโนโลยี IT ไทย",
+    "crime":    "ข่าวอาชญากรรมไทย",
+    "travel":   "ข่าวท่องเที่ยวไทย",
+    "weather":  "ข่าวสภาพอากาศไทย",
+    "world":    "world news today",
+}
+
+
+def _serpapi_news(query: str) -> list[dict]:
+    """ดึงข่าวจาก SerpAPI Google News API — Layer 0"""
+    if not SERPAPI_KEY:
+        return []
+
+    cache_key = f"serpapi_{query}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        params = {
+            "engine": "google_news",
+            "q": query,
+            "gl": "TH",
+            "hl": "th",
+            "api_key": SERPAPI_KEY,
+        }
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(SERPAPI_URL, params=params)
+
+        if resp.status_code != 200:
+            print(f"[news_service] SerpAPI error {resp.status_code}")
+            return []
+
+        articles = []
+        for item in resp.json().get("news_results", [])[:5]:
+            title = item.get("title", "")
+            snippet = item.get("snippet", "")
+            link = item.get("link", "")
+            source_raw = item.get("source", {})
+            source = source_raw.get("name", "Google News") if isinstance(source_raw, dict) else str(source_raw or "Google News")
+            if title:
+                articles.append({
+                    "title": title,
+                    "summary": snippet[:100] + "…" if len(snippet) > 100 else snippet,
+                    "link": link,
+                    "source": source,
+                })
+
+        _cache_set(cache_key, articles)
+        return articles
+
+    except Exception as e:
+        print(f"[news_service] _serpapi_news error: {e}")
+        return []
 
 
 # ── Layer 1: RSS Feed ────────────────────────────────────────────────────────
@@ -223,41 +284,53 @@ def _newsdata(query: str = "", category: str = "") -> list[dict]:
 
 # ── Public API ───────────────────────────────────────────────────────────────
 def get_thai_news(category: str = "ทั่วไป") -> dict:
-    """ชั้น 1: RSS → ชั้น 3: NewsData fallback"""
+    """ชั้น 0: SerpAPI → ชั้น 1: RSS → ชั้น 3: NewsData fallback"""
     rss_key = CATEGORY_MAP.get(category, "general")
-    articles = _fetch_rss(rss_key)
 
-    # fallback NewsData ถ้า RSS ได้น้อยกว่า 3
+    # Layer 0: SerpAPI
+    serpapi_query = _SERPAPI_QUERY_MAP.get(rss_key, f"ข่าวไทย {category}")
+    articles = _serpapi_news(serpapi_query)
+
+    # Layer 1: RSS fallback
+    if len(articles) < 3:
+        articles = (_serpapi_news(serpapi_query) + _fetch_rss(rss_key))[:5]
+
+    # Layer 3: NewsData fallback
     if len(articles) < 3:
         nd_cat_map = {"อาชญากรรม": "crime", "ท่องเที่ยว": "tourism", "เทคโนโลยี": "technology"}
         nd_cat = nd_cat_map.get(category, "top")
-        fallback = _newsdata(category=nd_cat)
-        articles = (articles + fallback)[:5]
+        articles = (articles + _newsdata(category=nd_cat))[:5]
 
     return _format_response(articles, f"ข่าวไทย{category}")
 
 
 def get_world_news() -> dict:
-    """ชั้น 2: Brave Search ข่าวต่างประเทศ"""
-    articles = _brave_news("world news today")
+    """ชั้น 0: SerpAPI → ชั้น 2: Brave → ชั้น 3: NewsData fallback"""
+    articles = _serpapi_news(_SERPAPI_QUERY_MAP["world"])
     if len(articles) < 3:
-        articles += _newsdata(category="world")
+        articles = (articles + _brave_news("world news today"))[:5]
+    if len(articles) < 3:
+        articles = (articles + _newsdata(category="world"))[:5]
     return _format_response(articles[:5], "ข่าวต่างประเทศ")
 
 
 def get_tech_news() -> dict:
-    """ชั้น 1: RSS Blognone+TechTalkThai → ชั้น 2: Brave ช่วย"""
-    articles = _fetch_rss("tech")
+    """ชั้น 0: SerpAPI → ชั้น 1: RSS Blognone+TechTalkThai → ชั้น 2: Brave"""
+    articles = _serpapi_news(_SERPAPI_QUERY_MAP["tech"])
     if len(articles) < 3:
-        articles += _brave_news("เทคโนโลยี IT news")
+        articles = (articles + _fetch_rss("tech"))[:5]
+    if len(articles) < 3:
+        articles = (articles + _brave_news("เทคโนโลยี IT news"))[:5]
     return _format_response(articles[:5], "ข่าวเทคโนโลยี")
 
 
 def search_news(query: str) -> dict:
-    """ชั้น 2: Brave Search → ชั้น 1: RSS กรอง keyword"""
-    articles = _brave_news(query)
+    """ชั้น 0: SerpAPI → ชั้น 2: Brave → ชั้น 1: RSS กรอง keyword"""
+    articles = _serpapi_news(query)
 
-    # เสริม RSS ที่ตรงกับ query
+    if len(articles) < 3:
+        articles = (articles + _brave_news(query))[:5]
+
     if len(articles) < 3:
         for rss_key in ["general", "tech", "crime"]:
             rss_arts = _fetch_rss(rss_key)

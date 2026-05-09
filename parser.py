@@ -231,6 +231,9 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
               "ปิดแจ้งเตือนรายจ่ายซ้ำ" "ยกเลิกการแจ้งเตือนรายจ่ายประจำ"
     remind_day = วันที่ต้องการ (1-31) หรือ 0 ถ้าต้องการปิดแจ้งเตือน
 
+- TRENDS   = ดู Trending Searches ในไทยตอนนี้
+    ตัวอย่าง: "trending วันนี้" "วันนี้ hot อะไร" "เทรนด์ในไทย" "กำลังฮิตอะไรวันนี้" "trending ไทย" "อะไรกำลัง hot" "search เยอะสุดวันนี้"
+
 - COMPARE = เปรียบเทียบรายรับรายจ่ายระหว่าง 2 เดือน
     ตัวอย่าง: "เปรียบเทียบเดือนนี้กับเดือนที่แล้ว" "เดือนนี้ใช้เงินมากกว่าเดือนที่แล้วไหม" "compare เดือน 4 กับ เดือน 5" "เดือนที่แล้วกับเดือนนี้ต่างกันยังไง"
     summary_month = เดือนอ้างอิง (เดือนปัจจุบัน ถ้าไม่ระบุ)
@@ -249,6 +252,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
          📋 จดโน้ต, สร้าง task / checklist, ตั้งการเตือน (reminder)
          🌤 ดูสภาพอากาศ + ค่าฝุ่น PM2.5
          📰 ดูข่าว (ไทย/โลก/เทคโนโลยี)
+         🔥 ดู Trending Searches ในไทย
          💳 บันทึกบิลประจำ (bill), แจ้งเตือนบิล, หารบิล
          🌅 ตั้ง Morning Briefing อัตโนมัติ
          📅 ดูวันหยุดนักขัตฤกษ์ไทย
@@ -289,7 +293,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | TRENDS | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
