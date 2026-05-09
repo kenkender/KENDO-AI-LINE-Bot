@@ -115,7 +115,7 @@ def handle_compare(send, parsed):
 
 def handle_briefing_set(send, user_id, parsed):
     briefing_hour = parsed.get("briefing_hour")
-    city = parsed.get("note", "").strip() or "กรุงเทพ"
+    city = (parsed.get("note") or "").strip() or "กรุงเทพ"
     if briefing_hour is None:
         send(
             "🌅 บอกเวลาด้วยนะครับ\n"
