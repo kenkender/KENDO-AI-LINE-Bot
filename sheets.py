@@ -951,3 +951,23 @@ def create_recurring_reminder(user_id: str, display_note: str, current_dt: datet
     except Exception as e:
         print(f"[sheets] create_recurring_reminder error: {e}")
         return False
+
+
+# ── FEATURE REQUESTS ──────────────────────────────────────────────────────────
+
+def log_feature_request(user_id: str, message: str, detected_intent: str) -> bool:
+    """บันทึกข้อความที่บอทตอบไม่ได้ลง sheet feature_requests เพื่อนำไปพัฒนา"""
+    try:
+        spreadsheet = get_sheet_client()
+        sheet = _get_or_create_sheet(
+            spreadsheet, "feature_requests",
+            ["timestamp", "source_user_id", "message", "detected_intent"]
+        )
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz).isoformat()
+        sheet.append_row([now, user_id, message, detected_intent], value_input_option="USER_ENTERED")
+        print(f"[sheets] Feature request logged: '{message}' (intent={detected_intent})")
+        return True
+    except Exception as e:
+        print(f"[sheets] log_feature_request error: {e}")
+        return False

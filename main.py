@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 
 from parser import parse_message
 from scheduler import check_reminders
+from sheets import log_feature_request
 
 from handlers.finance import (
     handle_expense, handle_income, handle_delete,
@@ -419,9 +420,19 @@ def handle_message(event: MessageEvent):
                         quick_reply=True
                     )
                 else:
-                    send(f"🤔 งงนิดนึงครับ ลองใหม่ได้เลย!\n\n{HELP_MESSAGE}", quick_reply=True)
+                    log_feature_request(user_id, raw_text, "UNKNOWN")
+                    send(
+                        "ตอนนี้ความสามารถของผมยังทำไม่ได้นะครับ "
+                        "แต่จะขอเก็บสิ่งที่คุณขอมาไว้เป็นข้อพิจารณานะครับ 📝",
+                        quick_reply=True
+                    )
             case _:
-                send("🤔 ไม่เข้าใจครับ ลองพิมพ์ใหม่นะ")
+                log_feature_request(user_id, raw_text, intent)
+                send(
+                    "ตอนนี้ความสามารถของผมยังทำไม่ได้นะครับ "
+                    "แต่จะขอเก็บสิ่งที่คุณขอมาไว้เป็นข้อพิจารณานะครับ 📝",
+                    quick_reply=True
+                )
 
     except Exception as e:
         print(f"[handle_message] CRITICAL ERROR: {e}")
