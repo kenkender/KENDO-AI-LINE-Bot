@@ -15,7 +15,8 @@ from db import (get_pending_reminders, mark_reminder_sent, get_summary,
                 list_tasks, get_all_briefing_users, get_today_reminders,
                 get_due_bills, mark_bill_reminded, create_recurring_reminder,
                 get_all_recurring_users, get_all_recurring_remind_users,
-                list_recurring_items)
+                list_recurring_items,
+                get_all_due_interval_reminders, update_next_fire)
 from calendar_service import get_thai_holiday_today
 from datetime import datetime
 import pytz
@@ -494,17 +495,33 @@ async def check_reminders():
                 all_uids = get_all_user_ids()
                 await check_deepseek_balance(all_uids)
 
-            # Morning briefing — ส่งตาม hour ของแต่ละ user
-            if now.minute == 0:
-                try:
-                    briefing_users = get_all_briefing_users()
-                    for bu in briefing_users:
-                        if bu["hour"] == now.hour and briefing_sent.get(bu["user_id"]) != now.date():
-                            briefing_sent[bu["user_id"]] = now.date()
-                            await send_morning_briefing(bu["user_id"], bu["city"])
-                            print(f"[scheduler] Morning briefing sent to {bu['user_id']}")
-                except Exception as e:
-                    print(f"[scheduler] briefing check error: {e}")
+            # Morning briefing — ส่งตาม hour:minute ของแต่ละ user
+            try:
+                briefing_users = get_all_briefing_users()
+                for bu in briefing_users:
+                    if (bu["hour"] == now.hour
+                            and bu.get("minute", 0) == now.minute
+                            and briefing_sent.get(bu["user_id"]) != now.date()):
+                        briefing_sent[bu["user_id"]] = now.date()
+                        await send_morning_briefing(bu["user_id"], bu["city"])
+                        print(f"[scheduler] Morning briefing sent to {bu['user_id']}")
+            except Exception as e:
+                print(f"[scheduler] briefing check error: {e}")
+
+            # Interval reminders — ตรวจทุก loop (60 วินาที)
+            try:
+                due_intervals = get_all_due_interval_reminders()
+                for iv in due_intervals:
+                    msg = (
+                        f"⏱ แจ้งเตือน: {iv['label']}\n\n"
+                        f"— KENDO AI 🤖"
+                    )
+                    success = await send_push_message(iv["user_id"], msg)
+                    if success:
+                        update_next_fire(iv["row_index"], iv["interval_minutes"])
+                        print(f"[scheduler] Interval reminder sent: {iv['label']} → {iv['user_id']}")
+            except Exception as e:
+                print(f"[scheduler] interval reminder check error: {e}")
 
             due = get_pending_reminders()
             print(f"[scheduler] Found {len(due)} pending reminders")

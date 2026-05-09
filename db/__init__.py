@@ -10,3 +10,6 @@ from db.prefs import (set_briefing, get_briefing, get_all_briefing_users,
                       get_all_recurring_remind_users)
 from db.summary import get_summary, format_summary_message, format_quick_summary, get_today_summary, get_compare_summary
 from db.recurring import add_recurring_items, list_recurring_items, delete_recurring_item, get_all_recurring_users
+from db.interval_reminder import (add_interval_reminder, get_active_interval_reminders,
+                                   get_all_due_interval_reminders, update_next_fire,
+                                   cancel_interval_reminder_by_label, cancel_all_interval_reminders)

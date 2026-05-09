@@ -33,7 +33,8 @@ from handlers.finance import (
 )
 from handlers.budget import handle_budget, handle_savings
 from handlers.task import handle_task_add, handle_task_done, handle_task_list
-from handlers.reminder import handle_note, handle_reminder, handle_cancel
+from handlers.reminder import (handle_note, handle_reminder, handle_cancel,
+                               handle_interval_set, handle_interval_list, handle_interval_cancel)
 from handlers.bill import handle_bill_add, handle_bill_list, handle_bill_delete
 from handlers.watchlist import handle_watch_add, handle_watch_list, handle_watch_done
 from handlers.summary import handle_summary, handle_analyze, handle_briefing_set, handle_compare
@@ -396,6 +397,9 @@ def handle_message(event: MessageEvent):
             case "BILL_LIST":       handle_bill_list(send, user_id)
             case "BILL_DELETE":     handle_bill_delete(send, user_id, parsed)
             case "BRIEFING_SET":    handle_briefing_set(send, user_id, parsed)
+            case "INTERVAL_REMINDER_SET":    handle_interval_set(send, user_id, parsed)
+            case "INTERVAL_REMINDER_LIST":   handle_interval_list(send, user_id)
+            case "INTERVAL_REMINDER_CANCEL": handle_interval_cancel(send, user_id, parsed)
             case "HOLIDAY":         handle_holiday(send, parsed)
             case "OIL_PRICE":       handle_oil_price(send)
             case "GOLD_PRICE":      handle_gold_price(send)
