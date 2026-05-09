@@ -129,6 +129,7 @@ MAIN_QUICK_REPLY = QuickReply(items=[
     QuickReplyItem(action=MessageAction(label="📋 Task", text="ดู task")),
     QuickReplyItem(action=MessageAction(label="💼 งบประมาณ", text="ดูงบประมาณ")),
     QuickReplyItem(action=MessageAction(label="⏰ ตั้งเตือน", text="เตือน")),
+    QuickReplyItem(action=MessageAction(label="🤖 ความสามารถของ Bot", text="ความสามารถของ Bot")),
     QuickReplyItem(action=MessageAction(label="❓ ช่วยเหลือ", text="ช่วยด้วย")),
 ])
 
@@ -146,6 +147,51 @@ HELP_MESSAGE = (
     "💳 บิลประจำ / 🎬 Watchlist / ✅ Task\n\n"
     "🌤 อากาศ | 📰 ข่าว | ⛽ น้ำมัน | 🗓 วันหยุด\n\n"
     "พิมพ์มาได้เลยครับ ภาษาพูดปกติก็เข้าใจ 😊"
+)
+
+CAPABILITIES_MESSAGE = (
+    "🤖 KENDO AI — ความสามารถทั้งหมด\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    "💰 การเงินส่วนตัว\n"
+    "  • บันทึกรายจ่าย / รายรับ\n"
+    "  • สรุปรายเดือน / เปรียบเทียบ 2 เดือน\n"
+    "  • วิเคราะห์พฤติกรรมการใช้จ่าย (AI)\n"
+    "  • ตั้งงบประมาณ + เป้าหมายออม\n"
+    "  • ดูรายจ่ายวันนี้ / ค้นหารายการ\n"
+    "  • หารบิลกับเพื่อน\n\n"
+
+    "🔄 รายการประจำ\n"
+    "  • บันทึกบิลประจำ + แจ้งเตือนครบกำหนด\n"
+    "  • รายจ่ายซ้ำ (Subscriptions) + แจ้งเตือน\n\n"
+
+    "📋 จัดการชีวิต\n"
+    "  • จดโน้ต / ตั้งแจ้งเตือน (ครั้งเดียว / ทำซ้ำ)\n"
+    "  • Task / Checklist\n"
+    "  • Watchlist (หนัง/ซีรีส์/เกม/เพลง/หนังสือ)\n"
+    "  • Morning Briefing อัตโนมัติ\n\n"
+
+    "🌍 ข้อมูลรอบตัว\n"
+    "  • พยากรณ์อากาศ + ค่าฝุ่น PM2.5\n"
+    "  • ข่าวไทย / ข่าวโลก / ข่าวเทคโนโลยี\n"
+    "  • ราคาน้ำมัน / ราคาทองคำ\n"
+    "  • วันหยุดนักขัตฤกษ์ไทย\n"
+    "  • ผลสลากกินแบ่งรัฐบาล\n\n"
+
+    "🔥 พลัง SerpAPI (Google)\n"
+    "  • Trending Searches ในไทยวันนี้\n"
+    "  • ค้นหาอัจฉริยะ (AI Overview + Search)\n"
+    "  • ข่าว Realtime จาก Google News\n\n"
+
+    "🤖 AI & คุยเล่น\n"
+    "  • คุยเล่น ถามตอบ เหมือนเพื่อนสนิท\n"
+    "  • แปลภาษา (EN/JP/CN/KR)\n"
+    "  • แนะนำเกม/หนัง/เพลง\n"
+    "  • ช่วยงาน IT / แก้ปัญหาคอม\n"
+    "  • ความรู้งานตำรวจท่องเที่ยว\n\n"
+
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "พิมพ์ภาษาพูดปกติได้เลยครับ 😊"
 )
 
 MENU_PROMPTS = {
@@ -171,6 +217,7 @@ MENU_PROMPTS = {
     "ดูงบประมาณ": None,
     "วิเคราะห์การใช้จ่าย": None,
     "ช่วยด้วย": "HELP",
+    "ความสามารถของ Bot": "CAPABILITIES",
 }
 
 
@@ -264,6 +311,9 @@ def handle_message(event: MessageEvent):
             prompt_text = MENU_PROMPTS[raw_text]
             if prompt_text == "HELP":
                 send(HELP_MESSAGE, quick_reply=True)
+                return
+            if prompt_text == "CAPABILITIES":
+                send(CAPABILITIES_MESSAGE, quick_reply=True)
                 return
             if prompt_text is not None:
                 send(prompt_text, quick_reply=True)
