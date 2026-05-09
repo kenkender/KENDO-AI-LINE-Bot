@@ -8,6 +8,7 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
+import pytz
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -258,6 +259,13 @@ def search_news(query: str) -> dict:
     return _format_response(articles[:5], f"ข่าว \"{query}\"")
 
 
+_THAI_MONTHS_NEWS = {
+    1: "มกราคม", 2: "กุมภาพันธ์", 3: "มีนาคม", 4: "เมษายน",
+    5: "พฤษภาคม", 6: "มิถุนายน", 7: "กรกฎาคม", 8: "สิงหาคม",
+    9: "กันยายน", 10: "ตุลาคม", 11: "พฤศจิกายน", 12: "ธันวาคม"
+}
+
+
 def _format_response(articles: list[dict], label: str) -> dict:
     """แปลง list of articles เป็น dict {success, message}"""
     if not articles:
@@ -266,13 +274,23 @@ def _format_response(articles: list[dict], label: str) -> dict:
             "message": f"❌ ไม่พบ{label}ในขณะนี้ครับ ลองถามใหม่ภายหลังนะครับ",
         }
 
-    lines = [f"📰 {label}ล่าสุด\n"]
+    bkk = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(bkk)
+    date_thai = f"{now.day} {_THAI_MONTHS_NEWS[now.month]} {now.year + 543}"
+
+    lines = [f"📰 {label}ล่าสุด", f"📅 ประจำวันที่ {date_thai}\n"]
     for i, a in enumerate(articles, 1):
-        title  = a.get("title", "").strip()
-        source = a.get("source", "").strip()
+        title   = a.get("title", "").strip()
+        summary = a.get("summary", "").strip()
+        source  = a.get("source", "").strip()
+        link    = a.get("link", "").strip()
         line = f"{i}. {title}"
+        if summary:
+            line += f"\n   {summary}"
         if source:
-            line += f" — {source}"
+            line += f"\n   📌 {source}"
+        if link:
+            line += f"\n   🔗 {link}"
         lines.append(line)
 
     return {"success": True, "message": "\n".join(lines).strip()}
