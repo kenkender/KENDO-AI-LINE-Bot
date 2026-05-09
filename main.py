@@ -19,7 +19,7 @@ from linebot.v3.messaging import (
     QuickReply, QuickReplyItem, MessageAction
 )
 from linebot.v3.messaging.models import FlexContainer
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessageContent
 from linebot.v3.exceptions import InvalidSignatureError
 from dotenv import load_dotenv
 
@@ -41,6 +41,7 @@ from handlers.info import (
     handle_weather, handle_air_quality, handle_holiday, handle_oil_price,
     handle_gold_price, handle_lottery
 )
+from weather_service import get_weather_by_coords
 from handlers.recurring import handle_recurring_add, handle_recurring_list, handle_recurring_delete, handle_recurring_set_remind
 
 load_dotenv()
@@ -374,6 +375,26 @@ def handle_message(event: MessageEvent):
         print(f"[handle_message] CRITICAL ERROR: {e}")
         import traceback
         traceback.print_exc()
+
+
+@handler.add(MessageEvent, message=LocationMessageContent)
+def handle_location_message(event: MessageEvent):
+    """รับ location message จาก LINE → ดึงพยากรณ์อากาศตามพิกัด GPS"""
+    try:
+        user_id = event.source.user_id
+        reply_token = event.reply_token
+        name = get_user_name(user_id)
+        send = Sender(reply_token, name)
+
+        lat = event.message.latitude
+        lon = event.message.longitude
+        print(f"[handle_location] GPS ({lat}, {lon}) from {user_id}")
+
+        result = get_weather_by_coords(lat, lon)
+        send(result["message"], quick_reply=True)
+
+    except Exception as e:
+        print(f"[handle_location] error: {e}")
 
 
 if __name__ == "__main__":
