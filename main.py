@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 
 from parser import parse_message
 from scheduler import check_reminders
+from sheets import log_feature_request
 
 from handlers.finance import (
     handle_expense, handle_income, handle_delete,
@@ -40,7 +41,7 @@ from handlers.summary import handle_summary, handle_analyze, handle_briefing_set
 from handlers.info import (
     handle_news_thai, handle_news_world, handle_news_tech, handle_news_search,
     handle_weather, handle_air_quality, handle_holiday, handle_oil_price,
-    handle_gold_price, handle_lottery
+    handle_gold_price, handle_lottery, handle_trends, handle_smart_search
 )
 from weather_service import get_weather_by_coords
 from handlers.recurring import handle_recurring_add, handle_recurring_list, handle_recurring_delete, handle_recurring_set_remind
@@ -48,7 +49,7 @@ from handlers.recurring import handle_recurring_add, handle_recurring_list, hand
 load_dotenv()
 
 conversation_history: dict = {}
-MAX_HISTORY_PAIRS = 3
+MAX_HISTORY_PAIRS = 5
 user_name_cache: dict = {}
 _fallback_alerted: set = set()  # เก็บ user_id ที่แจ้งเตือนไปแล้วในรอบนี้
 
@@ -130,6 +131,7 @@ MAIN_QUICK_REPLY = QuickReply(items=[
     QuickReplyItem(action=MessageAction(label="📋 Task", text="ดู task")),
     QuickReplyItem(action=MessageAction(label="💼 งบประมาณ", text="ดูงบประมาณ")),
     QuickReplyItem(action=MessageAction(label="⏰ ตั้งเตือน", text="เตือน")),
+    QuickReplyItem(action=MessageAction(label="🤖 ความสามารถของ Bot", text="ความสามารถของ Bot")),
     QuickReplyItem(action=MessageAction(label="❓ ช่วยเหลือ", text="ช่วยด้วย")),
 ])
 
@@ -147,6 +149,51 @@ HELP_MESSAGE = (
     "💳 บิลประจำ / 🎬 Watchlist / ✅ Task\n\n"
     "🌤 อากาศ | 📰 ข่าว | ⛽ น้ำมัน | 🗓 วันหยุด\n\n"
     "พิมพ์มาได้เลยครับ ภาษาพูดปกติก็เข้าใจ 😊"
+)
+
+CAPABILITIES_MESSAGE = (
+    "🤖 KENDO AI — ความสามารถทั้งหมด\n"
+    "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+    "💰 การเงินส่วนตัว\n"
+    "  • บันทึกรายจ่าย / รายรับ\n"
+    "  • สรุปรายเดือน / เปรียบเทียบ 2 เดือน\n"
+    "  • วิเคราะห์พฤติกรรมการใช้จ่าย (AI)\n"
+    "  • ตั้งงบประมาณ + เป้าหมายออม\n"
+    "  • ดูรายจ่ายวันนี้ / ค้นหารายการ\n"
+    "  • หารบิลกับเพื่อน\n\n"
+
+    "🔄 รายการประจำ\n"
+    "  • บันทึกบิลประจำ + แจ้งเตือนครบกำหนด\n"
+    "  • รายจ่ายซ้ำ (Subscriptions) + แจ้งเตือน\n\n"
+
+    "📋 จัดการชีวิต\n"
+    "  • จดโน้ต / ตั้งแจ้งเตือน (ครั้งเดียว / ทำซ้ำ)\n"
+    "  • Task / Checklist\n"
+    "  • Watchlist (หนัง/ซีรีส์/เกม/เพลง/หนังสือ)\n"
+    "  • Morning Briefing อัตโนมัติ\n\n"
+
+    "🌍 ข้อมูลรอบตัว\n"
+    "  • พยากรณ์อากาศ + ค่าฝุ่น PM2.5\n"
+    "  • ข่าวไทย / ข่าวโลก / ข่าวเทคโนโลยี\n"
+    "  • ราคาน้ำมัน / ราคาทองคำ\n"
+    "  • วันหยุดนักขัตฤกษ์ไทย\n"
+    "  • ผลสลากกินแบ่งรัฐบาล\n\n"
+
+    "🔥 พลัง SerpAPI (Google)\n"
+    "  • Trending Searches ในไทยวันนี้\n"
+    "  • ค้นหาอัจฉริยะ (AI Overview + Search)\n"
+    "  • ข่าว Realtime จาก Google News\n\n"
+
+    "🤖 AI & คุยเล่น\n"
+    "  • คุยเล่น ถามตอบ เหมือนเพื่อนสนิท\n"
+    "  • แปลภาษา (EN/JP/CN/KR)\n"
+    "  • แนะนำเกม/หนัง/เพลง\n"
+    "  • ช่วยงาน IT / แก้ปัญหาคอม\n"
+    "  • ความรู้งานตำรวจท่องเที่ยว\n\n"
+
+    "━━━━━━━━━━━━━━━━━━━━━━\n"
+    "พิมพ์ภาษาพูดปกติได้เลยครับ 😊"
 )
 
 MENU_PROMPTS = {
@@ -172,6 +219,7 @@ MENU_PROMPTS = {
     "ดูงบประมาณ": None,
     "วิเคราะห์การใช้จ่าย": None,
     "ช่วยด้วย": "HELP",
+    "ความสามารถของ Bot": "CAPABILITIES",
 }
 
 
@@ -266,6 +314,9 @@ def handle_message(event: MessageEvent):
             if prompt_text == "HELP":
                 send(HELP_MESSAGE, quick_reply=True)
                 return
+            if prompt_text == "CAPABILITIES":
+                send(CAPABILITIES_MESSAGE, quick_reply=True)
+                return
             if prompt_text is not None:
                 send(prompt_text, quick_reply=True)
                 return
@@ -297,7 +348,7 @@ def handle_message(event: MessageEvent):
             {"role": "user", "parts": [raw_text]},
             {"role": "model", "parts": [json.dumps(parsed, ensure_ascii=False)]}
         ]
-        max_entries = MAX_HISTORY_PAIRS * 2
+        max_entries = MAX_HISTORY_PAIRS * 4
         conversation_history[user_id] = updated[-max_entries:]
 
         # ── Confidence check ──
@@ -353,6 +404,8 @@ def handle_message(event: MessageEvent):
             case "OIL_PRICE":       handle_oil_price(send)
             case "GOLD_PRICE":      handle_gold_price(send)
             case "LOTTERY":         handle_lottery(send)
+            case "TRENDS":          handle_trends(send)
+            case "SMART_SEARCH":    handle_smart_search(send, parsed)
             case "COMPARE":         handle_compare(send, parsed)
             case "RECURRING_ADD":   handle_recurring_add(send, user_id, parsed)
             case "RECURRING_LIST":  handle_recurring_list(send, user_id)
@@ -371,9 +424,19 @@ def handle_message(event: MessageEvent):
                         quick_reply=True
                     )
                 else:
-                    send(f"🤔 งงนิดนึงครับ ลองใหม่ได้เลย!\n\n{HELP_MESSAGE}", quick_reply=True)
+                    log_feature_request(user_id, raw_text, "UNKNOWN")
+                    send(
+                        "ตอนนี้ความสามารถของผมยังทำไม่ได้นะครับ "
+                        "แต่จะขอเก็บสิ่งที่คุณขอมาไว้เป็นข้อพิจารณานะครับ 📝",
+                        quick_reply=True
+                    )
             case _:
-                send("🤔 ไม่เข้าใจครับ ลองพิมพ์ใหม่นะ")
+                log_feature_request(user_id, raw_text, intent)
+                send(
+                    "ตอนนี้ความสามารถของผมยังทำไม่ได้นะครับ "
+                    "แต่จะขอเก็บสิ่งที่คุณขอมาไว้เป็นข้อพิจารณานะครับ 📝",
+                    quick_reply=True
+                )
 
     except Exception as e:
         print(f"[handle_message] CRITICAL ERROR: {e}")
