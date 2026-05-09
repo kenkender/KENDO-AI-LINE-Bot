@@ -1,5 +1,6 @@
 from news_service import get_thai_news, get_world_news, get_tech_news, search_news
 from serpapi_trends_service import get_trending_now
+from serpapi_search_service import smart_search
 from weather_service import get_weather
 from airquality_service import get_air_quality
 from holiday_service import get_holidays, format_holidays_message
@@ -68,3 +69,17 @@ def handle_lottery(send):
 def handle_trends(send):
     result = get_trending_now()
     send(result["message"], quick_reply=True)
+
+
+def handle_smart_search(send, parsed):
+    query = (parsed.get("note") or "").strip()
+    if not query:
+        send(
+            "🔍 บอกด้วยนะครับว่าอยากค้นหาเรื่องอะไร\n\n"
+            "เช่น:\n"
+            "  • \"ค้นหา วิธีต่อใบขับขี่\"\n"
+            "  • \"เสิร์ช ราคาทองวันนี้\"\n"
+            "  • \"หาข้อมูล สถานทูตญี่ปุ่น\""
+        )
+        return
+    send(smart_search(query)["message"], quick_reply=True)

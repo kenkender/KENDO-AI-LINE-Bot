@@ -231,6 +231,11 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
               "ปิดแจ้งเตือนรายจ่ายซ้ำ" "ยกเลิกการแจ้งเตือนรายจ่ายประจำ"
     remind_day = วันที่ต้องการ (1-31) หรือ 0 ถ้าต้องการปิดแจ้งเตือน
 
+- SMART_SEARCH = ค้นหาข้อมูลจาก Google (ใช้เมื่อต้องการข้อมูลปัจจุบัน ข้อเท็จจริง หรือคำตอบที่ต้องอ้างอิงเว็บ)
+    ตัวอย่าง: "ค้นหา วิธีต่อใบขับขี่" "google ราคาน้ำมันพรุ่งนี้" "เสิร์ช วิธีแก้ไวไฟหลุดบ่อย"
+              "หาข้อมูล ภาษีรถยนต์ 2025" "ค้น สถานทูตญี่ปุ่นเปิดกี่โมง" "search วิธีทำ pad thai"
+    note = คำค้นหา (ทั้งหมดหลังคำว่า ค้นหา/google/เสิร์ช/หาข้อมูล/ค้น/search)
+
 - TRENDS   = ดู Trending Searches ในไทยตอนนี้
     ตัวอย่าง: "trending วันนี้" "วันนี้ hot อะไร" "เทรนด์ในไทย" "กำลังฮิตอะไรวันนี้" "trending ไทย" "อะไรกำลัง hot" "search เยอะสุดวันนี้"
 
@@ -253,6 +258,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
          🌤 ดูสภาพอากาศ + ค่าฝุ่น PM2.5
          📰 ดูข่าว (ไทย/โลก/เทคโนโลยี)
          🔥 ดู Trending Searches ในไทย
+         🔍 ค้นหาข้อมูลจาก Google (AI Overview + Search)
          💳 บันทึกบิลประจำ (bill), แจ้งเตือนบิล, หารบิล
          🌅 ตั้ง Morning Briefing อัตโนมัติ
          📅 ดูวันหยุดนักขัตฤกษ์ไทย
@@ -293,7 +299,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | TRENDS | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | TRENDS | SMART_SEARCH | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",

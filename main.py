@@ -39,7 +39,7 @@ from handlers.summary import handle_summary, handle_analyze, handle_briefing_set
 from handlers.info import (
     handle_news_thai, handle_news_world, handle_news_tech, handle_news_search,
     handle_weather, handle_air_quality, handle_holiday, handle_oil_price,
-    handle_gold_price, handle_lottery, handle_trends
+    handle_gold_price, handle_lottery, handle_trends, handle_smart_search
 )
 from weather_service import get_weather_by_coords
 from handlers.recurring import handle_recurring_add, handle_recurring_list, handle_recurring_delete, handle_recurring_set_remind
@@ -350,6 +350,7 @@ def handle_message(event: MessageEvent):
             case "GOLD_PRICE":      handle_gold_price(send)
             case "LOTTERY":         handle_lottery(send)
             case "TRENDS":          handle_trends(send)
+            case "SMART_SEARCH":    handle_smart_search(send, parsed)
             case "COMPARE":         handle_compare(send, parsed)
             case "RECURRING_ADD":   handle_recurring_add(send, user_id, parsed)
             case "RECURRING_LIST":  handle_recurring_list(send, user_id)
