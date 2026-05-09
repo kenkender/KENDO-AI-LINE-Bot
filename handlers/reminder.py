@@ -1,4 +1,6 @@
-from db import append_note, get_active_reminders, cancel_reminder
+from db import (append_note, get_active_reminders, cancel_reminder,
+                 add_interval_reminder, get_active_interval_reminders,
+                 cancel_interval_reminder_by_label, cancel_all_interval_reminders)
 from calendar_service import create_reminder_event, delete_calendar_event
 
 _DAY_TH = {1: "จันทร์", 2: "อังคาร", 3: "พุธ", 4: "พฤหัสบดี",
@@ -106,3 +108,86 @@ def handle_cancel(send, user_id, parsed):
         for r in matched:
             lines.append(f"  • {r['note']} ({r['reminder_datetime'][:16].replace('T', ' ')})")
         send("\n".join(lines))
+
+
+def _format_interval(minutes: int) -> str:
+    if minutes < 60:
+        return f"{minutes} นาที"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours} ชั่วโมง" + (f" {mins} นาที" if mins else "")
+
+
+def handle_interval_set(send, user_id, parsed):
+    label = (parsed.get("note") or "").strip()
+    interval_minutes = parsed.get("interval_minutes")
+
+    if not label or not interval_minutes:
+        send(
+            "⏱ บอกด้วยนะครับว่าจะเตือนเรื่องอะไร และทุกกี่นาที/ชั่วโมง\n\n"
+            "ตัวอย่าง:\n"
+            "  • \"ตั้งเตือนดื่มน้ำทุก 30 นาที\"\n"
+            "  • \"เตือนกินยาทุก 4 ชั่วโมง\"\n"
+            "  • \"เตือนขยับตัวทุก 1 ชั่วโมงครึ่ง\""
+        )
+        return
+
+    interval_minutes = int(interval_minutes)
+    if interval_minutes < 1:
+        send("⏱ ระยะเวลาต้องไม่น้อยกว่า 1 นาทีนะครับ")
+        return
+
+    result = add_interval_reminder(user_id, label, interval_minutes)
+    if not result["success"]:
+        send(f"❌ {result['message']}")
+        return
+
+    interval_text = _format_interval(interval_minutes)
+    send(
+        f"⏱ ตั้งเตือน \"{label}\" ทุก {interval_text} แล้วครับ!\n\n"
+        f"ผมจะแจ้งเตือนจนกว่าคุณจะสั่งให้ผมหยุดการแจ้งเตือนในครั้งนี้ครับ "
+        f"ถ้าอยากให้ผมหยุดการแจ้งเตือน แค่บอกผมว่า "
+        f"\"หยุดการแจ้งเตือน {label}\" นะครับ",
+        quick_reply=True
+    )
+
+
+def handle_interval_list(send, user_id):
+    items = get_active_interval_reminders(user_id)
+    if not items:
+        send(
+            "📭 ไม่มีการแจ้งเตือนซ้ำที่ใช้งานอยู่เลยครับ\n\n"
+            "ตั้งใหม่ได้เลยนะครับ เช่น \"เตือนดื่มน้ำทุก 30 นาที\""
+        )
+        return
+    lines = [f"⏱ การแจ้งเตือนซ้ำที่ใช้งานอยู่ ({len(items)}/{5}):\n"]
+    for i, item in enumerate(items, 1):
+        interval_text = _format_interval(item["interval_minutes"])
+        lines.append(f"{i}. {item['label']} — ทุก {interval_text}")
+    lines.append("\nพิมพ์ \"หยุดการแจ้งเตือน [ชื่อ]\" เพื่อยกเลิกครับ")
+    send("\n".join(lines), quick_reply=True)
+
+
+def handle_interval_cancel(send, user_id, parsed):
+    label = (parsed.get("note") or "").strip()
+
+    if not label or label in ("ทั้งหมด", "all"):
+        count = cancel_all_interval_reminders(user_id)
+        if count:
+            send(f"✅ ยกเลิกการแจ้งเตือนซ้ำทั้งหมด {count} รายการแล้วครับ!")
+        else:
+            send("📭 ไม่มีการแจ้งเตือนซ้ำที่ต้องยกเลิกครับ")
+        return
+
+    result = cancel_interval_reminder_by_label(user_id, label)
+    if result["cancelled_count"] > 0:
+        send(f"✅ หยุดการแจ้งเตือน \"{label}\" แล้วครับ!")
+    else:
+        items = get_active_interval_reminders(user_id)
+        if not items:
+            send("📭 ไม่มีการแจ้งเตือนซ้ำที่ใช้งานอยู่เลยครับ")
+        else:
+            lines = [f"🔍 หาไม่เจอครับ มีรายการเหล่านี้อยู่:\n"]
+            for item in items:
+                lines.append(f"  • {item['label']} (ทุก {_format_interval(item['interval_minutes'])})")
+            lines.append("\nพิมพ์ \"หยุดการแจ้งเตือน [ชื่อ]\" หรือ \"หยุดการแจ้งเตือนทั้งหมด\" นะครับ")
+            send("\n".join(lines))

@@ -192,8 +192,22 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 - BRIEFING_SET = ตั้งค่า morning briefing (ข้อความสรุปเช้า)
     ตัวอย่าง: "เปิด briefing 7 โมงเช้า" "ตั้ง briefing เชียงใหม่ 6 โมง" "ปิด briefing" "ตั้งเวลา briefing 8 โมง ที่กรุงเทพ"
-    briefing_hour = เวลา 0-23 (null ถ้าต้องการปิด briefing), note = ชื่อเมืองสำหรับอากาศ (null ถ้าไม่ระบุ)
-    "ปิด briefing" → briefing_hour: null
+              "เปลี่ยน briefing เป็น 08:30น." "ตั้ง briefing 9 โมงครึ่ง" "briefing 7.30น."
+    briefing_hour = ชั่วโมง 0-23, briefing_minute = นาที 0-59 (default 0 ถ้าไม่ระบุ), note = ชื่อเมือง (null ถ้าไม่ระบุ)
+    "ปิด briefing" → briefing_hour: null, briefing_minute: null
+
+- INTERVAL_REMINDER_SET = ตั้งการแจ้งเตือนซ้ำทุก X นาที หรือ X ชั่วโมง
+    ตัวอย่าง: "ตั้งเตือนดื่มน้ำทุก 30 นาที" "เตือนกินยาทุก 4 ชั่วโมง" "เตือนยืนขึ้นทุก 1 ชั่วโมงครึ่ง"
+              "ตั้งแจ้งเตือนออกกำลังกายทุก 2 ชั่วโมง" "remind ดื่มน้ำทุก 45 นาที"
+    note = หัวข้อ/ชื่อการแจ้งเตือน (เช่น "ดื่มน้ำ" "กินยา")
+    interval_minutes = จำนวนนาที (เช่น 30 นาที → 30, 4 ชั่วโมง → 240, 1 ชั่วโมงครึ่ง → 90)
+
+- INTERVAL_REMINDER_LIST = ดูรายการแจ้งเตือนซ้ำที่ตั้งไว้
+    ตัวอย่าง: "ดูการแจ้งเตือนซ้ำ" "มีเตือนอะไรบ้าง" "เตือนซ้ำที่ตั้งไว้" "รายการแจ้งเตือนประจำ"
+
+- INTERVAL_REMINDER_CANCEL = ยกเลิกการแจ้งเตือนซ้ำ
+    ตัวอย่าง: "หยุดการแจ้งเตือน ดื่มน้ำ" "ยกเลิกเตือนกินยา" "หยุดเตือนทั้งหมด" "ปิดการแจ้งเตือน ดื่มน้ำ"
+    note = หัวข้อที่ต้องการยกเลิก (null หรือ "ทั้งหมด" = ยกเลิกทั้งหมด)
 
 - HOLIDAY  = ดูวันหยุดนักขัตฤกษ์ไทย
     ตัวอย่าง: "วันหยุดเดือนนี้มีอะไรบ้าง" "วันหยุดที่ใกล้จะมาถึง" "วันหยุดเดือนมิถุนายน" "วันหยุดปีนี้ทั้งหมด" "วันหยุดราชการเดือนหน้า"
@@ -250,7 +264,8 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
          🌤 ดูสภาพอากาศ + ค่าฝุ่น PM2.5
          📰 ดูข่าว (ไทย/โลก/เทคโนโลยี)
          💳 บันทึกบิลประจำ (bill), แจ้งเตือนบิล, หารบิล
-         🌅 ตั้ง Morning Briefing อัตโนมัติ
+         🌅 ตั้ง Morning Briefing อัตโนมัติ (รองรับ HH:MM เช่น 08:30)
+         ⏱ ตั้งแจ้งเตือนซ้ำทุก X นาที/ชั่วโมง เช่น เตือนดื่มน้ำทุก 30 นาที (สูงสุด 5 รายการ)
          📅 ดูวันหยุดนักขัตฤกษ์ไทย
          ⛽ ดูราคาน้ำมัน (OR/PTT)
          🏅 ดูราคาทองคำ (ทองแท่ง/ทองรูปพรรณ)
@@ -289,7 +304,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | INTERVAL_REMINDER_SET | INTERVAL_REMINDER_LIST | INTERVAL_REMINDER_CANCEL | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -304,6 +319,8 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "split_count": "int | null — ใช้เฉพาะ SPLIT_BILL: จำนวนคนที่หาร (>= 2)",
   "bill_due_day": "int (1-31) | null — ใช้เฉพาะ BILL_ADD: วันที่ครบกำหนดในแต่ละเดือน",
   "briefing_hour": "int (0-23) | null — ใช้เฉพาะ BRIEFING_SET: ชั่วโมงที่ต้องการรับ briefing, null = ปิด",
+  "briefing_minute": "int (0-59) | null — ใช้เฉพาะ BRIEFING_SET: นาที (default 0 ถ้าไม่ระบุ) เช่น 08:30 → briefing_hour:8, briefing_minute:30",
+  "interval_minutes": "int | null — ใช้เฉพาะ INTERVAL_REMINDER_SET: จำนวนนาทีระหว่างการแจ้งเตือน (30 นาที→30, 2 ชั่วโมง→120, 1.5 ชั่วโมง→90)",
   "holiday_year": "int (ปี ค.ศ.) | null — ใช้เฉพาะ HOLIDAY: ปีที่ต้องการดู (null = ปีปัจจุบัน)",
   "holiday_month": "int (1-12) | null — ใช้เฉพาะ HOLIDAY: เดือนที่ต้องการดู (null = ทั้งปี)",
   "near_only": "bool | null — ใช้เฉพาะ HOLIDAY: true ถ้าถามวันหยุดใกล้ๆ ที่จะมาถึง",

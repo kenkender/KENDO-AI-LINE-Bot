@@ -6,7 +6,7 @@ from db.client import get_sheet_client, get_or_create_sheet
 def _user_prefs_sheet(spreadsheet):
     return get_or_create_sheet(
         spreadsheet, "user_prefs",
-        ["source_user_id", "briefing_hour", "briefing_city", "updated_at"]
+        ["source_user_id", "briefing_hour", "briefing_city", "updated_at", "briefing_minute"]
     )
 
 
@@ -18,7 +18,7 @@ def _find_prefs_row(sheet, user_id: str):
     return None, {}
 
 
-def set_briefing(user_id: str, hour, city: str = "") -> bool:
+def set_briefing(user_id: str, hour, city: str = "", minute: int = 0) -> bool:
     try:
         spreadsheet = get_sheet_client()
         sheet = _user_prefs_sheet(spreadsheet)
@@ -26,12 +26,15 @@ def set_briefing(user_id: str, hour, city: str = "") -> bool:
         now = datetime.now(pytz.timezone("Asia/Bangkok")).isoformat()
         hour_val = int(hour) if hour is not None else ""
         city_val = city.strip() or str(existing.get("briefing_city", "") or "กรุงเทพ")
+        minute_val = int(minute) if minute is not None else 0
         if row_idx:
             sheet.update_cell(row_idx, 2, hour_val)
             sheet.update_cell(row_idx, 3, city_val)
             sheet.update_cell(row_idx, 4, now)
+            minute_col = _ensure_column(sheet, "briefing_minute")
+            sheet.update_cell(row_idx, minute_col, minute_val)
         else:
-            sheet.append_row([user_id, hour_val, city_val, now])
+            sheet.append_row([user_id, hour_val, city_val, now, minute_val])
         return True
     except Exception as e:
         print(f"[db.prefs] set_briefing error: {e}")
@@ -131,9 +134,12 @@ def get_all_briefing_users() -> list:
             hour_raw = r.get("briefing_hour", "")
             hour = int(hour_raw) if str(hour_raw).strip().isdigit() else None
             if hour is not None and r.get("source_user_id"):
+                minute_raw = r.get("briefing_minute", "")
+                minute = int(minute_raw) if str(minute_raw).strip().isdigit() else 0
                 result.append({
                     "user_id": r.get("source_user_id"),
                     "hour": hour,
+                    "minute": minute,
                     "city": str(r.get("briefing_city", "") or "กรุงเทพ")
                 })
         return result

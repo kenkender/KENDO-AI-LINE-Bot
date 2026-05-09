@@ -115,17 +115,18 @@ def handle_compare(send, parsed):
 
 def handle_briefing_set(send, user_id, parsed):
     briefing_hour = parsed.get("briefing_hour")
+    briefing_minute = int(parsed.get("briefing_minute") or 0)
     city = (parsed.get("note") or "").strip() or "กรุงเทพ"
     if briefing_hour is None:
         send(
             "🌅 บอกเวลาด้วยนะครับ\n"
-            "เช่น: \"เปิด morning briefing 7 โมงเช้า กรุงเทพ\""
+            "เช่น: \"เปิด morning briefing 7 โมงเช้า กรุงเทพ\" หรือ \"briefing 08:30น.\""
         )
         return
-    set_briefing(user_id, int(briefing_hour), city)
+    set_briefing(user_id, int(briefing_hour), city, briefing_minute)
     send(
         f"🌅 เปิด Morning Briefing แล้วครับ!\n"
-        f"⏰ เวลา {int(briefing_hour):02d}:00 น.\n"
+        f"⏰ เวลา {int(briefing_hour):02d}:{briefing_minute:02d} น.\n"
         f"📍 สถานที่: {city}\n\n"
         f"ทุกเช้าจะส่งสรุปอากาศ + ค่าฝุ่น + เตือนวันนี้ให้ครับ",
         quick_reply=True
