@@ -53,12 +53,7 @@ def _get_draw_date() -> date:
     today = datetime.now(bkk).date()
     if today.day >= 16:
         return today.replace(day=16)
-    if today.day >= 1:
-        # งวดก่อนหน้า
-        if today.month == 1:
-            return date(today.year - 1, 12, 16)
-        return date(today.year, today.month - 1, 16)
-    return today.replace(day=1)
+    return today.replace(day=1)  # วันที่ 1-15 → งวดล่าสุดคือ 1 ของเดือนนี้
 
 
 def get_lottery_result() -> dict:
