@@ -462,14 +462,17 @@ def handle_location_message(event: MessageEvent):
         print(f"[handle_location] GPS ({lat}, {lon}) from {user_id}")
 
         # ส่งพยากรณ์อากาศ + คุณภาพอากาศควบคู่กันในข้อความเดียว
+        # แสดง message เสมอ (แม้ success=False) เพื่อ user รู้ว่ามีอะไร fail
         weather = get_weather_by_coords(lat, lon)
         aq = get_air_quality_by_coords(lat, lon)
 
         parts = []
-        if weather.get("success"):
-            parts.append(weather["message"])
-        if aq.get("success"):
-            parts.append(aq["message"])
+        w_msg = weather.get("message", "") if isinstance(weather, dict) else ""
+        a_msg = aq.get("message", "") if isinstance(aq, dict) else ""
+        if w_msg:
+            parts.append(w_msg)
+        if a_msg:
+            parts.append(a_msg)
 
         if not parts:
             send("❌ ดึงข้อมูลอากาศจากพิกัดนี้ไม่ได้ครับ ลองใหม่อีกทีนะครับ", quick_reply=True)

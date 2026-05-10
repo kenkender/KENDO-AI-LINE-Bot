@@ -136,28 +136,33 @@ def get_weather_by_coords(lat: float, lon: float) -> dict:
     if cached:
         weather = _format_weather(cached, display_name)
     else:
-        try:
-            with httpx.Client(timeout=10) as client:
-                resp = client.get(
-                    "https://api.open-meteo.com/v1/forecast",
-                    params={
-                        "latitude": lat,
-                        "longitude": lon,
-                        "current": "temperature_2m,apparent_temperature,relative_humidity_2m,"
-                                   "precipitation_probability,weathercode,windspeed_10m",
-                        "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max",
-                        "timezone": "Asia/Bangkok",
-                        "forecast_days": 1,
-                    },
-                )
-            if resp.status_code != 200:
-                return {"success": False, "message": "❌ ไม่สามารถดึงข้อมูลอากาศได้ครับ"}
-            data = resp.json()
-            _cache_set(cache_key, data)
-            weather = _format_weather(data, display_name)
-        except Exception as e:
-            print(f"[weather_service] GPS open-meteo error: {e}")
-            return {"success": False, "message": "❌ ดึงข้อมูลอากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ"}
+        # Retry สูงสุด 2 ครั้ง — Render cold start บางทีทำให้ครั้งแรก slow/timeout
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,apparent_temperature,relative_humidity_2m,"
+                       "precipitation_probability,weathercode,windspeed_10m",
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+            "timezone": "Asia/Bangkok",
+            "forecast_days": 1,
+        }
+        data = None
+        last_err = None
+        for attempt in range(2):
+            try:
+                with httpx.Client(timeout=15) as client:
+                    resp = client.get("https://api.open-meteo.com/v1/forecast", params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    break
+                last_err = f"status {resp.status_code}"
+            except Exception as e:
+                last_err = str(e)
+                print(f"[weather_service] GPS open-meteo attempt {attempt+1} error: {e}")
+        if data is None:
+            return {"success": False, "message": f"❌ ดึงข้อมูลอากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ ({last_err})"}
+        _cache_set(cache_key, data)
+        weather = _format_weather(data, display_name)
 
     # append TMD
     xml_text = _fetch_tmd_xml()
