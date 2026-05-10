@@ -260,10 +260,10 @@ def handle_compare_days(send, user_id, parsed):
                     "layout": "horizontal",
                     "margin": "sm",
                     "contents": [
-                        {"type": "text", "text": "", "flex": 2},
+                        {"type": "filler", "flex": 2},
                         {"type": "text", "text": label_a, "flex": 2, "align": "end", "size": "xs", "color": "#888888", "wrap": True},
                         {"type": "text", "text": label_b, "flex": 2, "align": "end", "size": "xs", "weight": "bold", "wrap": True},
-                        {"type": "text", "text": "±", "flex": 1, "align": "end", "size": "xs", "color": "#888888"}
+                        {"type": "text", "text": "+/-", "flex": 1, "align": "end", "size": "xs", "color": "#888888"}
                     ]
                 },
                 {
