@@ -479,7 +479,7 @@ async def check_reminders():
                 if bill_checked_date != now.date():
                     recurring_reminded_today.clear()
                 try:
-                    remind_users = get_all_recurring_remind_users()
+                    remind_users = await loop.run_in_executor(None, get_all_recurring_remind_users)
                     for ru in remind_users:
                         uid = ru["user_id"]
                         rday = ru["remind_day"]
@@ -497,7 +497,7 @@ async def check_reminders():
 
             # Morning briefing — ส่งตาม hour:minute ของแต่ละ user
             try:
-                briefing_users = get_all_briefing_users()
+                briefing_users = await loop.run_in_executor(None, get_all_briefing_users)
                 for bu in briefing_users:
                     if (bu["hour"] == now.hour
                             and bu.get("minute", 0) == now.minute
@@ -510,7 +510,7 @@ async def check_reminders():
 
             # Interval reminders — ตรวจทุก loop (60 วินาที)
             try:
-                due_intervals = get_all_due_interval_reminders()
+                due_intervals = await loop.run_in_executor(None, get_all_due_interval_reminders)
                 for iv in due_intervals:
                     msg = (
                         f"⏱ แจ้งเตือน: {iv['label']}\n\n"
@@ -523,7 +523,7 @@ async def check_reminders():
             except Exception as e:
                 print(f"[scheduler] interval reminder check error: {e}")
 
-            due = get_pending_reminders()
+            due = await loop.run_in_executor(None, get_pending_reminders)
             print(f"[scheduler] Found {len(due)} pending reminders")
 
             for reminder in due:
