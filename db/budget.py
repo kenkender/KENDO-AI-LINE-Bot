@@ -41,7 +41,7 @@ def get_budget_status(user_id: str) -> dict:
         spreadsheet = get_sheet_client()
         _, settings = _find_settings_row(_settings_sheet(spreadsheet), user_id)
         budget = float(settings.get("budget", 0) or 0)
-        summary = get_summary()
+        summary = get_summary(user_id=user_id)
         expense = summary.get("total_expense", 0) if summary.get("success") else 0
         return {"budget": budget, "expense": expense, "remaining": budget - expense}
     except Exception as e:
@@ -71,7 +71,7 @@ def get_savings_status(user_id: str) -> dict:
         spreadsheet = get_sheet_client()
         _, settings = _find_settings_row(_settings_sheet(spreadsheet), user_id)
         goal = float(settings.get("savings_goal", 0) or 0)
-        summary = get_summary()
+        summary = get_summary(user_id=user_id)
         balance = summary.get("balance", 0) if summary.get("success") else 0
         return {"goal": goal, "saved": max(balance, 0), "remaining": max(goal - balance, 0)}
     except Exception as e:

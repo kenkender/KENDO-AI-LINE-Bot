@@ -3,7 +3,7 @@ import pytz
 from db.client import get_sheet_client
 
 
-def get_summary(month: int = None, year: int = None) -> dict:
+def get_summary(month: int = None, year: int = None, user_id: str = None) -> dict:
     try:
         spreadsheet = get_sheet_client()
         sheet = spreadsheet.worksheet("transactions")
@@ -29,6 +29,8 @@ def get_summary(month: int = None, year: int = None) -> dict:
                 if record_date.month != month or record_date.year != year:
                     continue
             except (ValueError, Exception):
+                continue
+            if user_id and record.get("source_user_id", "") != user_id:
                 continue
             if record.get("status") == "DELETED":
                 continue
@@ -109,8 +111,15 @@ def get_date_summary(user_id: str = None, target_date=None) -> dict:
         bkk = pytz.timezone("Asia/Bangkok")
         if target_date is None:
             target_date = datetime.now(bkk)
-        elif target_date.tzinfo is None:
+        elif isinstance(target_date, str):
+            try:
+                target_date = datetime.fromisoformat(target_date)
+            except ValueError:
+                target_date = datetime.now(bkk)
+        if target_date.tzinfo is None:
             target_date = bkk.localize(target_date)
+        else:
+            target_date = target_date.astimezone(bkk)
         date_str = target_date.strftime("%Y-%m-%d")
         records = sheet.get_all_records()
         total_income, total_expense = 0.0, 0.0
@@ -189,10 +198,10 @@ def format_summary_message(summary: dict) -> str:
     return "\n".join(lines)
 
 
-def get_compare_summary(month_a: int, year_a: int, month_b: int, year_b: int) -> dict:
+def get_compare_summary(month_a: int, year_a: int, month_b: int, year_b: int, user_id: str = None) -> dict:
     """ดึงสรุปของ 2 เดือนมาเปรียบเทียบ"""
-    a = get_summary(month_a, year_a)
-    b = get_summary(month_b, year_b)
+    a = get_summary(month_a, year_a, user_id)
+    b = get_summary(month_b, year_b, user_id)
     return {"a": a, "b": b}
 
 

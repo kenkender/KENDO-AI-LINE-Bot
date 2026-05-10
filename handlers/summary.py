@@ -13,7 +13,8 @@ _THAI_MONTHS_FULL = {
 def handle_summary(send, parsed, user_id=None):
     summary = get_summary(
         month=parsed.get("summary_month"),
-        year=parsed.get("summary_year")
+        year=parsed.get("summary_year"),
+        user_id=user_id
     )
     if not summary["success"]:
         send("❌ ไม่สามารถดึงข้อมูลสรุปได้ กรุณาลองใหม่ครับ")
@@ -30,8 +31,8 @@ def handle_summary(send, parsed, user_id=None):
     send.flex(f"📊 สรุป{month_name} {summary['year']}", flex, quick_reply=True)
 
 
-def handle_analyze(send):
-    summary = get_summary()
+def handle_analyze(send, user_id=None):
+    summary = get_summary(user_id=user_id)
     if summary["success"]:
         analysis = analyze_with_ai(summary)
         send(f"🧠 วิเคราะห์การใช้จ่ายของคุณ\n\n{analysis}", quick_reply=True)
@@ -39,7 +40,7 @@ def handle_analyze(send):
         send("❌ ไม่มีข้อมูลการใช้จ่ายเดือนนี้ครับ")
 
 
-def handle_compare(send, parsed):
+def handle_compare(send, parsed, user_id=None):
     from datetime import datetime
     import pytz
     now = datetime.now(pytz.timezone("Asia/Bangkok"))
@@ -52,7 +53,7 @@ def handle_compare(send, parsed):
     else:
         month_a, year_a = month_b - 1, year_b
 
-    compare = get_compare_summary(month_a, year_a, month_b, year_b)
+    compare = get_compare_summary(month_a, year_a, month_b, year_b, user_id=user_id)
     a = compare["a"]
     b = compare["b"]
 
@@ -335,14 +336,32 @@ def handle_compare_days(send, user_id, parsed):
 def handle_briefing_set(send, user_id, parsed):
     briefing_hour = parsed.get("briefing_hour")
     briefing_minute = int(parsed.get("briefing_minute") or 0)
-    city = (parsed.get("note") or "").strip() or "กรุงเทพ"
+    raw_city = (parsed.get("note") or "").strip()
+    # กรองคำสั่ง/keyword ที่ parser อาจ leak มาแทนชื่อเมือง
+    _city_blocklist = {"briefing", "morning", "บรีฟ", "บรีฟฟิ่ง", "เตือน",
+                       "แจ้งเตือน", "ประจำวัน", "เช้า", "ตอนเช้า", "ทุกเช้า"}
+    if not raw_city or raw_city.lower() in _city_blocklist:
+        city = "กรุงเทพ"
+    else:
+        city = raw_city
     if briefing_hour is None:
         send(
             "🌅 บอกเวลาด้วยนะครับ\n"
             "เช่น: \"เปิด morning briefing 7 โมงเช้า กรุงเทพ\" หรือ \"briefing 08:30น.\""
         )
         return
-    set_briefing(user_id, int(briefing_hour), city, briefing_minute)
+    # Validate range: hour 0-23, minute 0-59
+    try:
+        briefing_hour = int(briefing_hour)
+    except (TypeError, ValueError):
+        send("🌅 ระบุเวลาเป็นชั่วโมงไม่ได้ครับ ลองใหม่ เช่น \"briefing 7 โมง\"")
+        return
+    if not (0 <= briefing_hour <= 23):
+        send(f"🌅 เวลาต้องอยู่ระหว่าง 00:00 - 23:59 ครับ (ที่ส่งมา: {briefing_hour} โมง)")
+        return
+    if not (0 <= briefing_minute <= 59):
+        briefing_minute = 0
+    set_briefing(user_id, briefing_hour, city, briefing_minute)
     send(
         f"🌅 เปิด Morning Briefing แล้วครับ!\n"
         f"⏰ เวลา {int(briefing_hour):02d}:{briefing_minute:02d} น.\n"

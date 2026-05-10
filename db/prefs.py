@@ -24,9 +24,21 @@ def set_briefing(user_id: str, hour, city: str = "", minute: int = 0) -> bool:
         sheet = _user_prefs_sheet(spreadsheet)
         row_idx, existing = _find_prefs_row(sheet, user_id)
         now = datetime.now(pytz.timezone("Asia/Bangkok")).isoformat()
-        hour_val = int(hour) if hour is not None else ""
+        # Validate hour (0-23) และ minute (0-59) — clamp ค่าผิดเป็น default
+        if hour is None:
+            hour_val = ""
+        else:
+            try:
+                h = int(hour)
+                hour_val = h if 0 <= h <= 23 else ""
+            except (TypeError, ValueError):
+                hour_val = ""
+        try:
+            m = int(minute) if minute is not None else 0
+            minute_val = m if 0 <= m <= 59 else 0
+        except (TypeError, ValueError):
+            minute_val = 0
         city_val = city.strip() or str(existing.get("briefing_city", "") or "กรุงเทพ")
-        minute_val = int(minute) if minute is not None else 0
         if row_idx:
             sheet.update_cell(row_idx, 2, hour_val)
             sheet.update_cell(row_idx, 3, city_val)

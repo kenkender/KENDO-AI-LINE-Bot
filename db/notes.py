@@ -34,7 +34,8 @@ def get_pending_reminders() -> list:
         spreadsheet = get_sheet_client()
         sheet = spreadsheet.worksheet("notes")
         records = sheet.get_all_records()
-        now = datetime.now(pytz.timezone("Asia/Bangkok"))
+        bkk = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bkk)
         due_reminders = []
         for i, record in enumerate(records):
             if record.get("intent") != "REMINDER" or record.get("status") != "OK":
@@ -44,18 +45,23 @@ def get_pending_reminders() -> list:
                 continue
             try:
                 reminder_dt = datetime.fromisoformat(str(reminder_dt_str))
+                if reminder_dt.tzinfo is None:
+                    reminder_dt = bkk.localize(reminder_dt)
+                else:
+                    reminder_dt = reminder_dt.astimezone(bkk)
                 diff = (reminder_dt - now).total_seconds()
                 if -60 <= diff <= 300:
                     raw_note = record.get("note", "")
                     extras_str, recurrence_str = "", ""
-                    m = re.search(r'\r?\n\[EXTRAS:(.*?)\]', raw_note, re.DOTALL)
-                    if m:
-                        extras_str = m.group(1).strip()
-                        raw_note = raw_note[:m.start()] + raw_note[m.end():]
-                    m = re.search(r'\r?\n\[RECUR:(.*?)\]', raw_note, re.DOTALL)
-                    if m:
-                        recurrence_str = m.group(1).strip()
-                        raw_note = raw_note[:m.start()] + raw_note[m.end():]
+                    # รองรับกรณีมีหลาย block — เก็บ block แรก แล้วลบทุก block ออกจาก note
+                    m_extras = re.search(r'\r?\n\[EXTRAS:(.*?)\]', raw_note, re.DOTALL)
+                    if m_extras:
+                        extras_str = m_extras.group(1).strip()
+                    m_recur = re.search(r'\r?\n\[RECUR:(.*?)\]', raw_note, re.DOTALL)
+                    if m_recur:
+                        recurrence_str = m_recur.group(1).strip()
+                    raw_note = re.sub(r'\r?\n\[EXTRAS:.*?\]', '', raw_note, flags=re.DOTALL)
+                    raw_note = re.sub(r'\r?\n\[RECUR:.*?\]', '', raw_note, flags=re.DOTALL)
                     due_reminders.append({
                         "row_index": i + 2,
                         "user_id": record.get("source_user_id", ""),

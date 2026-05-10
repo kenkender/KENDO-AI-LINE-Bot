@@ -336,12 +336,13 @@ def build_summary_card(summary: dict, budget_status: dict = None) -> dict:
         })
         for cat, amt in sorted_cats:
             pct_cat = (amt / total_exp * 100) if total_exp > 0 else 0
+            cat_name = (cat or "").strip() or "อื่นๆ"
             body_contents.append({
                 "type": "box",
                 "layout": "horizontal",
                 "margin": "xs",
                 "contents": [
-                    {"type": "text", "text": cat, "size": "xs", "color": "#666666", "flex": 3},
+                    {"type": "text", "text": cat_name, "size": "xs", "color": "#666666", "flex": 3},
                     {
                         "type": "text",
                         "text": f"{amt:,.0f}",
@@ -488,12 +489,13 @@ def build_today_card(data: dict) -> dict:
             "color": "#666666", "margin": "md"
         })
         for cat, amt in sorted(data["expense_by_category"].items(), key=lambda x: -x[1]):
+            cat_name = (cat or "").strip() or "อื่นๆ"
             body_contents.append({
                 "type": "box",
                 "layout": "horizontal",
                 "margin": "xs",
                 "contents": [
-                    {"type": "text", "text": cat, "size": "xs", "color": "#666666", "flex": 3},
+                    {"type": "text", "text": cat_name, "size": "xs", "color": "#666666", "flex": 3},
                     {
                         "type": "text",
                         "text": f"{amt:,.0f} บาท",
@@ -702,6 +704,7 @@ def build_task_list_card(tasks: list) -> dict:
     else:
         items = []
         for i, t in enumerate(tasks[:10], 1):
+            task_text = (t.get("task") or "").strip() or "(ไม่ระบุ)"
             items.append({
                 "type": "box",
                 "layout": "horizontal",
@@ -715,7 +718,7 @@ def build_task_list_card(tasks: list) -> dict:
                     },
                     {
                         "type": "text",
-                        "text": t["task"],
+                        "text": task_text,
                         "size": "sm", "color": "#333333",
                         "flex": 1, "wrap": True, "margin": "sm"
                     }
@@ -782,6 +785,7 @@ def build_recurring_card(items: list, payday_str: str = "", header: str = "") ->
         total = sum(i["amount"] for i in items)
         body_contents = []
         for idx, item in enumerate(items):
+            item_name = (item.get("name") or "").strip() or "(ไม่ระบุ)"
             body_contents.append({
                 "type": "box",
                 "layout": "horizontal",
@@ -789,7 +793,7 @@ def build_recurring_card(items: list, payday_str: str = "", header: str = "") ->
                 "contents": [
                     {
                         "type": "text",
-                        "text": f"{idx + 1}. {item['name']}",
+                        "text": f"{idx + 1}. {item_name}",
                         "size": "sm", "color": "#333333",
                         "flex": 3, "wrap": True
                     },
@@ -892,6 +896,7 @@ def build_bill_list_carousel(bills: list) -> dict:
         days_left = due - today_day if due >= today_day else (31 - today_day + due)
         bg_color = "#E74C3C" if days_left <= 3 else "#F39C12" if days_left <= 7 else "#3498DB"
         urgency_text = "🔴 ใกล้แล้ว!" if days_left <= 3 else f"อีก {days_left} วัน"
+        bill_name = (b.get("name") or "").strip() or "(ไม่ระบุ)"
 
         bubbles.append({
             "type": "bubble",
@@ -917,7 +922,7 @@ def build_bill_list_carousel(bills: list) -> dict:
                 "contents": [
                     {
                         "type": "text",
-                        "text": b["name"],
+                        "text": bill_name,
                         "size": "sm", "weight": "bold",
                         "color": "#222222", "wrap": True, "align": "center"
                     },

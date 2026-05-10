@@ -471,7 +471,7 @@ def parse_message(user_text: str, history: list = None) -> dict:
                     text = re.sub(r"```json|```", "", text).strip()
                     parsed = json.loads(text)
 
-                    is_fallback = model_name not in ("deepseek-chat",)
+                    is_fallback = model_name not in ("deepseek-chat", "llama-3.3-70b-versatile", "llama-3.1-8b-instant")
                     print(f"[parser] Used model: {model_name}, history_len: {len(history or [])}")
                     return {"success": True, "data": parsed, "model": model_name, "fallback": is_fallback}
 

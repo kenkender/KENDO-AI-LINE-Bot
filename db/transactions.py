@@ -15,6 +15,7 @@ def append_transaction(user_id: str, raw_message: str, parsed: dict, status: str
         spreadsheet = get_sheet_client()
         sheet = spreadsheet.worksheet("transactions")
         timestamp = datetime.now(pytz.timezone("Asia/Bangkok")).isoformat()
+        # Sheet header: timestamp | source_user_id | raw_message | intent | category | amount | currency | note | _ | status
         row = [
             timestamp, user_id, raw_message,
             parsed.get("intent", ""), parsed.get("category", ""),
