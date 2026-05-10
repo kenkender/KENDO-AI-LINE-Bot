@@ -1,6 +1,7 @@
 from db import (
     append_transaction, delete_last_transaction, search_transactions,
     get_summary, format_quick_summary, get_budget_status,
+    get_today_summary, get_date_summary,
 )
 from flex_builder import build_expense_card, build_income_card, build_today_card
 
@@ -69,14 +70,33 @@ def handle_search(send, user_id, parsed):
         send("\n".join(lines), quick_reply=True)
 
 
-def handle_today_expense(send, user_id):
-    from db import get_today_summary
-    data = get_today_summary(user_id)
+def handle_today_expense(send, user_id, parsed=None):
+    from datetime import datetime, timedelta
+    import pytz
+
+    bangkok_tz = pytz.timezone("Asia/Bangkok")
+    target_date = None
+
+    if parsed and parsed.get("reminder_datetime"):
+        try:
+            target_date = datetime.fromisoformat(parsed["reminder_datetime"])
+            if target_date.tzinfo is None:
+                target_date = bangkok_tz.localize(target_date)
+        except:
+            pass
+
+    if not target_date:
+        target_date = datetime.now(bangkok_tz)
+
+    data = get_date_summary(user_id, target_date)
+    date_display = target_date.strftime("%d/%m/%Y")
+
     if not data["success"] or (data["total_income"] == 0 and data["total_expense"] == 0):
-        send("📭 ยังไม่มีรายการวันนี้เลยครับ", quick_reply=True)
+        send(f"📭 ยังไม่มีรายการเมื่อวันที่ {date_display} เลยครับ", quick_reply=True)
         return
     flex = build_today_card(data)
-    send.flex("📊 สรุปวันนี้", flex, quick_reply=True)
+    title = f"📊 สรุปวันที่ {date_display}"
+    send.flex(title, flex, quick_reply=True)
 
 
 def handle_split_bill(send, parsed):
