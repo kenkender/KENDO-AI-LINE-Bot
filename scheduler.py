@@ -45,7 +45,7 @@ async def send_push_message(user_id: str, message: str) -> bool:
     }
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(LINE_PUSH_URL, json=payload, headers=headers)
             if response.status_code == 200:
                 print(f"[scheduler] Push sent to {user_id}")
@@ -170,7 +170,7 @@ async def check_budget_warnings():
             print(f"[scheduler] budget warning error for {user_id}: {e}")
 
 
-def _infer_extras_from_note(note: str) -> str:
+def _infer_extras_from_note(note: str, default_location: str = "กรุงเทพ") -> str:
     """Fallback: ถ้า parser ไม่ได้ส่ง reminder_extras มา ให้ตรวจสอบจาก note text แทน"""
     n = note.lower()
     parts = []
@@ -178,11 +178,12 @@ def _infer_extras_from_note(note: str) -> str:
     weather_kw = ["อากาศ", "weather", "พยากรณ์", "อุณหภูมิ", "ฝนตก", "ร้อน", "หนาว", "ลม"]
     aq_kw      = ["ฝุ่น", "pm2.5", "pm25", "pm 2.5", "air quality", "คุณภาพอากาศ"]
     task_kw    = ["task", "checklist", "เช็คลิสต์", "รายการ", "ต้องทำ", "สิ่งที่ต้องทำ"]
+    loc = default_location or "กรุงเทพ"
 
     if any(kw in n for kw in weather_kw):
-        parts.append("weather:กรุงเทพ")
+        parts.append(f"weather:{loc}")
     if any(kw in n for kw in aq_kw):
-        parts.append("air_quality:กรุงเทพ")
+        parts.append(f"air_quality:{loc}")
     if any(kw in n for kw in task_kw):
         parts.append("tasks")
 
@@ -195,7 +196,11 @@ def _infer_extras_from_note(note: str) -> str:
 async def fetch_reminder_extras(user_id: str, extras_str: str, note: str = "") -> str:
     """ดึงข้อมูลพิเศษสำหรับ rich reminder (weather, air_quality, tasks)"""
     if not extras_str and note:
-        extras_str = _infer_extras_from_note(note)
+        from db import get_briefing
+        loop = asyncio.get_running_loop()
+        prefs = await loop.run_in_executor(None, get_briefing, user_id)
+        user_city = prefs.get("city") or "กรุงเทพ"
+        extras_str = _infer_extras_from_note(note, user_city)
     if not extras_str:
         return ""
 
@@ -443,6 +448,7 @@ async def check_reminders():
     briefing_sent: dict = {}  # {user_id: date}
     holiday_greeted_date = None
     recurring_reminded_today: set = set()
+    recurring_reminded_date = None  # วันที่ reset recurring_reminded_today ล่าสุด
     deepseek_balance_checked_hour = None  # เช็คทุก 6 ชั่วโมง
 
     while True:
@@ -477,7 +483,8 @@ async def check_reminders():
             # Recurring expense reminder — วันที่ user กำหนด เวลา 09:00
             if now.hour == 9 and now.minute == 0:
                 # reset ทุกวันเมื่อวันเปลี่ยน
-                if bill_checked_date != now.date():
+                if recurring_reminded_date != now.date():
+                    recurring_reminded_date = now.date()
                     recurring_reminded_today.clear()
                 try:
                     remind_users = await loop.run_in_executor(None, get_all_recurring_remind_users)
@@ -493,7 +500,8 @@ async def check_reminders():
             # DeepSeek balance check — ทุก 6 ชั่วโมง (00, 06, 12, 18)
             if now.hour % 6 == 0 and now.minute == 0 and deepseek_balance_checked_hour != now.hour:
                 deepseek_balance_checked_hour = now.hour
-                all_uids = get_all_user_ids()
+                loop = asyncio.get_running_loop()
+                all_uids = await loop.run_in_executor(None, get_all_user_ids)
                 await check_deepseek_balance(all_uids)
 
             # Morning briefing — ส่งตาม hour:minute ของแต่ละ user

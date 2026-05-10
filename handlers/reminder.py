@@ -23,9 +23,12 @@ def handle_reminder(send, user_id, raw_text, parsed):
     calendar_event_id = ""
 
     if reminder_dt:
-        cal_result = create_reminder_event(note, reminder_dt)
-        if cal_result["success"]:
-            calendar_event_id = cal_result["event_id"]
+        try:
+            cal_result = create_reminder_event(note, reminder_dt)
+            if cal_result["success"]:
+                calendar_event_id = cal_result["event_id"]
+        except Exception as e:
+            print(f"[reminder] Google Calendar error (skipping): {e}")
 
     success = append_note(user_id, raw_text, parsed, calendar_event_id)
 

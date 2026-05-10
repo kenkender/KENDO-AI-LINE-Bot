@@ -102,12 +102,18 @@ def handle_today_expense(send, user_id, parsed=None):
 def handle_split_bill(send, parsed):
     amount = parsed.get("amount")
     split_count = parsed.get("split_count")
-    if not amount or not split_count or int(split_count) <= 0:
+    try:
+        amount_f = float(amount) if amount is not None else 0
+        count_i = int(float(split_count)) if split_count is not None else 0
+    except (TypeError, ValueError):
+        amount_f, count_i = 0, 0
+
+    if not amount_f or count_i <= 0:
         send("🧾 บอกด้วยนะครับว่าหารเท่าไหร่ กี่คน\nเช่น: \"หารค่าอาหาร 480 บาท 3 คน\"")
     else:
-        per_person = float(amount) / int(split_count)
+        per_person = amount_f / count_i
         send(
-            f"🧾 หารบิล {float(amount):,.0f} บาท ÷ {int(split_count)} คน\n\n"
+            f"🧾 หารบิล {amount_f:,.0f} บาท ÷ {count_i} คน\n\n"
             f"💵 คนละ {per_person:,.2f} บาท",
             quick_reply=True
         )

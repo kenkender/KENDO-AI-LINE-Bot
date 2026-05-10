@@ -287,8 +287,10 @@ async def webhook(request: Request):
     body = await request.body()
     if not signature:
         return {"status": "ok"}
+    loop = asyncio.get_running_loop()
+    body_str = body.decode("utf-8")
     try:
-        handler.handle(body.decode("utf-8"), signature)
+        await loop.run_in_executor(None, handler.handle, body_str, signature)
     except InvalidSignatureError:
         print(f"[webhook] InvalidSignature — body length: {len(body)}")
     except Exception as e:
