@@ -68,7 +68,11 @@ def _get_from_goldtraders() -> dict | None:
         try:
             dt = datetime.fromisoformat(as_time)
             bkk = pytz.timezone("Asia/Bangkok")
-            dt_bkk = dt.replace(tzinfo=pytz.utc).astimezone(bkk) if dt.tzinfo is None else dt.astimezone(bkk)
+            # asTime จาก goldtraders.or.th เป็นเวลาไทย — ถ้า naive ให้ localize เป็น Asia/Bangkok
+            if dt.tzinfo is None:
+                dt_bkk = bkk.localize(dt)
+            else:
+                dt_bkk = dt.astimezone(bkk)
             date_str = dt_bkk.strftime("%d/%m/%Y %H:%M")
         except Exception:
             date_str = datetime.now(pytz.timezone("Asia/Bangkok")).strftime("%d/%m/%Y %H:%M")

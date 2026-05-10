@@ -293,7 +293,7 @@ def get_thai_news(category: str = "ทั่วไป") -> dict:
 
     # Layer 1: RSS fallback
     if len(articles) < 3:
-        articles = (_serpapi_news(serpapi_query) + _fetch_rss(rss_key))[:5]
+        articles = (articles + _fetch_rss(rss_key))[:5]
 
     # Layer 3: NewsData fallback
     if len(articles) < 3:
