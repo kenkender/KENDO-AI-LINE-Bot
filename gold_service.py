@@ -1,12 +1,19 @@
 """
 gold_service.py
-ดึงราคาทองคำไทยจาก goldtraders.or.th JSON API (สมาคมค้าทองคำ)
+ดึงราคาทองคำไทย:
+  Layer 1 — goldtraders.or.th JSON API (สมาคมค้าทองคำ)
+  Layer 2 — SerpAPI Google Search (ถ้า Layer 1 ถูกบล็อก)
 Cache: 15 นาที
 """
 import httpx
+import os
 import time
+import re
 from datetime import datetime
 import pytz
+
+SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
+SERPAPI_URL = "https://serpapi.com/search"
 
 _cache: dict = {}
 CACHE_TTL = 15 * 60  # 15 minutes
@@ -34,24 +41,18 @@ def _cache_set(key: str, data, ttl: int = CACHE_TTL):
     _cache[key] = {"data": data, "expires_at": time.time() + ttl}
 
 
-def get_gold_prices() -> dict:
-    cached = _cache_get("gold")
-    if cached:
-        return cached
-
+def _get_from_goldtraders() -> dict | None:
+    """Layer 1: goldtraders.or.th — คืน None ถ้าถูกบล็อก"""
     try:
-        with httpx.Client(timeout=15, headers=_HEADERS, follow_redirects=True) as client:
+        with httpx.Client(timeout=10, headers=_HEADERS, follow_redirects=True) as client:
             resp = client.get(_API_URL)
-
         if resp.status_code != 200:
-            return {"success": False, "message": f"❌ ดึงข้อมูลไม่ได้ ({resp.status_code})"}
-
+            print(f"[gold] goldtraders status {resp.status_code} — falling back")
+            return None
         records = resp.json()
         if not records:
-            return {"success": False, "message": "❌ ไม่พบข้อมูลราคาทองครับ"}
-
+            return None
         latest = records[0]
-
         prices = {}
         if latest.get("bL_BuyPrice"):
             prices["bar_buy"] = float(latest["bL_BuyPrice"])
@@ -61,11 +62,8 @@ def get_gold_prices() -> dict:
             prices["orn_buy"] = float(latest["oM965_BuyPrice"])
         if latest.get("oM965_SellPrice"):
             prices["orn_sell"] = float(latest["oM965_SellPrice"])
-
         if not prices:
-            return {"success": False, "message": "❌ ไม่พบข้อมูลราคาทองครับ"}
-
-        # แปลง asTime เป็น string วันที่
+            return None
         as_time = latest.get("asTime", "")
         try:
             dt = datetime.fromisoformat(as_time)
@@ -74,24 +72,114 @@ def get_gold_prices() -> dict:
             date_str = dt_bkk.strftime("%d/%m/%Y %H:%M")
         except Exception:
             date_str = datetime.now(pytz.timezone("Asia/Bangkok")).strftime("%d/%m/%Y %H:%M")
-
         change = latest.get("priceChangeFromPrevDayLast")
-
-        result = {
+        return {
             "success": True,
             "prices": prices,
             "date": date_str,
             "change": float(change) if change is not None else None,
             "source": "สมาคมค้าทองคำ (goldtraders.or.th)",
         }
-        _cache_set("gold", result)
-        return result
-
-    except httpx.TimeoutException:
-        return {"success": False, "message": "⏱ ดึงข้อมูลช้าเกินไปครับ ลองใหม่ทีหลังนะ"}
     except Exception as e:
-        print(f"[gold] error: {e}")
-        return {"success": False, "message": "❌ เชื่อมต่อไม่ได้ครับ ลองใหม่ทีหลังนะ"}
+        print(f"[gold] goldtraders error: {e}")
+        return None
+
+
+def _parse_price(text: str) -> float | None:
+    """แปลงข้อความราคา เช่น '47,650' หรือ '47650.00' เป็น float"""
+    if not text:
+        return None
+    cleaned = re.sub(r"[^\d.]", "", str(text).replace(",", ""))
+    try:
+        return float(cleaned)
+    except Exception:
+        return None
+
+
+def _get_from_serpapi() -> dict | None:
+    """Layer 2: SerpAPI Google Search — ดึงราคาทองจาก Google Answer Box"""
+    if not SERPAPI_KEY:
+        print("[gold] No SERPAPI_KEY — cannot fallback")
+        return None
+    try:
+        params = {
+            "engine": "google",
+            "q": "ราคาทองคำวันนี้ สมาคมค้าทองคำ",
+            "hl": "th",
+            "gl": "th",
+            "api_key": SERPAPI_KEY,
+        }
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(SERPAPI_URL, params=params)
+        if resp.status_code != 200:
+            print(f"[gold] SerpAPI status {resp.status_code}")
+            return None
+
+        data = resp.json()
+        now_str = datetime.now(pytz.timezone("Asia/Bangkok")).strftime("%d/%m/%Y %H:%M")
+
+        # ลอง parse จาก answer_box
+        answer = data.get("answer_box", {})
+        organic = data.get("organic_results", [])
+
+        prices = {}
+
+        # กรณี answer_box มีข้อมูลราคาทอง
+        if answer:
+            raw_text = answer.get("answer") or answer.get("result") or ""
+            # ลอง regex หาตัวเลขราคาทองแท่ง เช่น "47,650"
+            nums = re.findall(r"[\d,]+(?:\.\d+)?", raw_text.replace(",", ""))
+            floats = [float(n) for n in nums if 30000 < float(n) < 200000]
+            if len(floats) >= 2:
+                prices["bar_buy"] = floats[0]
+                prices["bar_sell"] = floats[1]
+
+        # กรณี organic results — หา snippet ที่มีราคา
+        if not prices:
+            for r in organic[:3]:
+                snippet = r.get("snippet", "")
+                # หาตัวเลขในช่วงราคาทอง (30,000–200,000)
+                nums = re.findall(r"([\d]{2,3},[\d]{3})", snippet)
+                floats = [float(n.replace(",", "")) for n in nums if 30000 < float(n.replace(",", "")) < 200000]
+                if len(floats) >= 2:
+                    prices["bar_buy"] = floats[0]
+                    prices["bar_sell"] = floats[1]
+                    break
+                elif len(floats) == 1:
+                    prices["bar_buy"] = floats[0]
+                    break
+
+        if not prices:
+            print("[gold] SerpAPI: ไม่สามารถ parse ราคาทองจาก snippet ได้")
+            return None
+
+        return {
+            "success": True,
+            "prices": prices,
+            "date": now_str,
+            "change": None,
+            "source": "Google Search (SerpAPI)",
+        }
+    except Exception as e:
+        print(f"[gold] SerpAPI error: {e}")
+        return None
+
+
+def get_gold_prices() -> dict:
+    cached = _cache_get("gold")
+    if cached:
+        return cached
+
+    result = _get_from_goldtraders()
+    if result is None:
+        print("[gold] Trying SerpAPI fallback...")
+        result = _get_from_serpapi()
+
+    if result is None:
+        return {"success": False, "message": "❌ ดึงราคาทองไม่ได้ตอนนี้ครับ ลองใหม่ทีหลังนะ"}
+
+    _cache_set("gold", result)
+    return result
 
 
 def format_gold_message(result: dict) -> str:
