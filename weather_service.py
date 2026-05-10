@@ -29,6 +29,17 @@ def _cache_get(key: str):
     return None
 
 
+def _cache_get_stale(key: str, max_stale_hours: int = 24):
+    """คืน cache แม้ expired แล้ว (ภายใน max_stale_hours ชม.) — สำหรับ fallback ตอน API rate limited"""
+    e = _cache.get(key)
+    if not e:
+        return None
+    age_sec = time.time() - (e["expires_at"] - CACHE_TTL_WEATHER)
+    if age_sec > max_stale_hours * 3600:
+        return None
+    return e["data"]
+
+
 def _cache_set(key: str, data, ttl: int = CACHE_TTL_WEATHER):
     _cache[key] = {"data": data, "expires_at": time.time() + ttl}
 
@@ -136,7 +147,6 @@ def get_weather_by_coords(lat: float, lon: float) -> dict:
     if cached:
         weather = _format_weather(cached, display_name)
     else:
-        # Retry สูงสุด 2 ครั้ง — Render cold start บางทีทำให้ครั้งแรก slow/timeout
         params = {
             "latitude": lat,
             "longitude": lon,
@@ -148,6 +158,8 @@ def get_weather_by_coords(lat: float, lon: float) -> dict:
         }
         data = None
         last_err = None
+        rate_limited = False
+        # Retry เฉพาะ transient errors (timeout/5xx/network) — ไม่ retry 4xx (rate limit ซ้ำเปล่าๆ)
         for attempt in range(2):
             try:
                 with httpx.Client(timeout=15) as client:
@@ -156,13 +168,26 @@ def get_weather_by_coords(lat: float, lon: float) -> dict:
                     data = resp.json()
                     break
                 last_err = f"status {resp.status_code}"
+                if 400 <= resp.status_code < 500:
+                    if resp.status_code == 429:
+                        rate_limited = True
+                    break  # ไม่ retry 4xx
             except Exception as e:
                 last_err = str(e)
                 print(f"[weather_service] GPS open-meteo attempt {attempt+1} error: {e}")
         if data is None:
-            return {"success": False, "message": f"❌ ดึงข้อมูลอากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ ({last_err})"}
-        _cache_set(cache_key, data)
-        weather = _format_weather(data, display_name)
+            # Fallback: ใช้ stale cache ถ้ามี (ภายใน 24 ชม.)
+            stale = _cache_get_stale(cache_key, max_stale_hours=24)
+            if stale is not None:
+                print(f"[weather_service] Using stale cache for {cache_key} ({last_err})")
+                weather = _format_weather(stale, display_name)
+                if rate_limited:
+                    weather["message"] = "⚠️ ใช้ข้อมูลอากาศเก่า (API rate limit)\n\n" + weather["message"]
+            else:
+                return {"success": False, "message": f"❌ ดึงข้อมูลอากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ ({last_err})"}
+        else:
+            _cache_set(cache_key, data)
+            weather = _format_weather(data, display_name)
 
     # append TMD
     xml_text = _fetch_tmd_xml()
@@ -365,50 +390,64 @@ def get_weather(place: str) -> dict:
     if cached:
         return _format_weather(cached, display_name or place)
 
-    try:
-        with httpx.Client(timeout=10) as client:
-            resp = client.get(
-                "https://api.open-meteo.com/v1/forecast",
-                params={
-                    "latitude": lat,
-                    "longitude": lon,
-                    "current": ",".join([
-                        "temperature_2m",
-                        "apparent_temperature",
-                        "relative_humidity_2m",
-                        "precipitation_probability",
-                        "weathercode",
-                        "windspeed_10m",
-                    ]),
-                    "daily": ",".join([
-                        "temperature_2m_max",
-                        "temperature_2m_min",
-                        "precipitation_probability_max",
-                    ]),
-                    "timezone": "Asia/Bangkok",
-                    "forecast_days": 1,
-                },
-            )
-        if resp.status_code != 200:
-            return {"success": False, "message": "❌ ไม่สามารถดึงข้อมูลอากาศได้ครับ"}
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "current": ",".join([
+            "temperature_2m", "apparent_temperature", "relative_humidity_2m",
+            "precipitation_probability", "weathercode", "windspeed_10m",
+        ]),
+        "daily": ",".join([
+            "temperature_2m_max", "temperature_2m_min", "precipitation_probability_max",
+        ]),
+        "timezone": "Asia/Bangkok",
+        "forecast_days": 1,
+    }
+    data = None
+    last_err = None
+    rate_limited = False
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=15) as client:
+                resp = client.get("https://api.open-meteo.com/v1/forecast", params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                break
+            last_err = f"status {resp.status_code}"
+            if 400 <= resp.status_code < 500:
+                if resp.status_code == 429:
+                    rate_limited = True
+                break
+        except Exception as e:
+            last_err = str(e)
+            print(f"[weather_service] open-meteo attempt {attempt+1} error: {e}")
 
-        data = resp.json()
+    if data is None:
+        # Fallback: stale cache (up to 24 ชม.)
+        stale = _cache_get_stale(cache_key, max_stale_hours=24)
+        if stale is not None:
+            print(f"[weather_service] Using stale cache for {cache_key} ({last_err})")
+            weather = _format_weather(stale, display_name or place)
+            if rate_limited:
+                weather["message"] = "⚠️ ใช้ข้อมูลอากาศเก่า (API rate limit)\n\n" + weather["message"]
+        else:
+            return {"success": False, "message": f"❌ ดึงข้อมูลพยากรณ์อากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ ({last_err})"}
+    else:
         _cache_set(cache_key, data, ttl=CACHE_TTL_WEATHER)
         weather = _format_weather(data, display_name or place)
 
-        # TMD 7-day forecast (province level)
+    # TMD 7-day forecast (province level) — best effort, ignore errors
+    try:
         xml_text = _fetch_tmd_xml()
         if xml_text:
             tmd_days = _parse_tmd_province(xml_text, display_name or place)
             tmd_section = _format_tmd_section(tmd_days)
             if tmd_section:
                 weather["message"] += tmd_section
-
-        return weather
-
     except Exception as e:
-        print(f"[weather_service] open-meteo error: {e}")
-        return {"success": False, "message": "❌ ดึงข้อมูลพยากรณ์อากาศไม่ได้ครับ ลองใหม่อีกทีนะครับ"}
+        print(f"[weather_service] TMD append error: {e}")
+
+    return weather
 
 
 def _format_weather(data: dict, place: str) -> dict:
