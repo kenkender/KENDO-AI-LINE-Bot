@@ -9,7 +9,7 @@ from flex_builder import build_expense_card, build_income_card, build_today_card
 def handle_expense(send, user_id, raw_text, parsed):
     success = append_transaction(user_id, raw_text, parsed)
     if success:
-        summary = get_summary()
+        summary = get_summary(user_id=user_id)
         budget_status = get_budget_status(user_id)
         flex = build_expense_card(
             note=parsed.get("note", ""),
@@ -27,7 +27,7 @@ def handle_expense(send, user_id, raw_text, parsed):
 def handle_income(send, user_id, raw_text, parsed):
     success = append_transaction(user_id, raw_text, parsed)
     if success:
-        summary = get_summary()
+        summary = get_summary(user_id=user_id)
         flex = build_income_card(
             note=parsed.get("note", ""),
             amount=parsed.get("amount", 0),
@@ -78,12 +78,14 @@ def handle_today_expense(send, user_id, parsed=None):
     now = datetime.now(bangkok_tz)
 
     target_date = now
-    if parsed and parsed.get("target_date"):
+    raw_target = parsed.get("target_date") if parsed else None
+    if raw_target:
         try:
-            target_date = datetime.fromisoformat(parsed["target_date"])
-            if target_date.tzinfo is None:
-                target_date = bangkok_tz.localize(target_date)
-        except Exception:
+            # รองรับเฉพาะ YYYY-MM-DD เท่านั้น — partial format เช่น "2025-05" จะ fallback
+            target_date = datetime.strptime(str(raw_target).strip()[:10], "%Y-%m-%d")
+            target_date = bangkok_tz.localize(target_date)
+        except Exception as e:
+            print(f"[handle_today_expense] target_date parse error ({raw_target!r}): {e} — fallback to now")
             target_date = now
 
     is_today = target_date.date() == now.date()

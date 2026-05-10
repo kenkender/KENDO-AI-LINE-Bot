@@ -99,10 +99,10 @@ async def check_deepseek_balance(user_ids: list):
 
 async def send_weekly_summary():
     """ส่งสรุปรายสัปดาห์ทุกวันอาทิตย์ เวลา 20:00"""
-    user_ids = get_all_user_ids()
+    user_ids = get_all_user_ids() or []
     for user_id in user_ids:
         try:
-            summary = get_summary()
+            summary = get_summary(user_id=user_id)
             if not summary["success"] or (summary["total_income"] == 0 and summary["total_expense"] == 0):
                 continue
             msg = "📅 สรุปประจำสัปดาห์ จาก KENDO AI 🤖\n\n" + format_summary_message(summary)
@@ -121,7 +121,7 @@ async def check_budget_warnings():
     days_in_month = calendar.monthrange(now.year, now.month)[1]
     days_elapsed = max(now.day, 1)
 
-    user_ids = get_all_user_ids()
+    user_ids = get_all_user_ids() or []
     for user_id in user_ids:
         try:
             status = get_budget_status(user_id)
@@ -522,7 +522,7 @@ async def check_reminders():
             if now.hour % 6 == 0 and now.minute == 0 and deepseek_balance_checked_hour != now.hour:
                 deepseek_balance_checked_hour = now.hour
                 loop = asyncio.get_running_loop()
-                all_uids = await loop.run_in_executor(None, get_all_user_ids)
+                all_uids = await loop.run_in_executor(None, get_all_user_ids) or []
                 await check_deepseek_balance(all_uids)
 
             # Morning briefing — ส่งตาม hour:minute ของแต่ละ user

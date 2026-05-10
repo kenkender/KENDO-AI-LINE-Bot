@@ -3,10 +3,11 @@
     "allow": [
       "Bash(python -c ' *)",
       "mcp__Claude_in_Chrome__tabs_context_mcp",
-      "Bash(git add *)",
-      "Bash(git commit -m ' *)",
-      "Bash(git push *)",
-      "Bash(git commit *)"
+      "Bash(python -m py_compile main.py)",
+      "Bash(python3 -)",
+      "Bash(python -m py_compile scheduler.py)",
+      "Bash(python -m py_compile sheets.py)",
+      "Bash(python -m py_compile parser.py)"
     ]
   }
 }

@@ -3,6 +3,9 @@ db/interval_reminder.py
 Interval Reminder — แจ้งเตือนซ้ำทุก X นาที/ชั่วโมง (สูงสุด 5 รายการ/user)
 Sheet: interval_reminders
 Columns: user_id, label, interval_minutes, next_fire, active, created_at
+
+NOTE: column name "user_id" ในตารางนี้ ไม่เหมือน sheet อื่นที่ใช้ "source_user_id"
+      เก็บไว้แบบนี้เพื่อ backward-compat กับข้อมูลที่มีอยู่
 """
 
 from datetime import datetime, timedelta
@@ -21,6 +24,14 @@ def _sheet():
 def add_interval_reminder(user_id: str, label: str, interval_minutes: int) -> dict:
     """เพิ่ม interval reminder ใหม่ — คืน {success, message}"""
     try:
+        # Validation: interval_minutes ต้อง >= 1 นาที (กัน next_fire ตั้งใน past/now)
+        try:
+            interval_minutes = int(interval_minutes)
+        except (TypeError, ValueError):
+            return {"success": False, "message": "ระยะเวลาไม่ถูกต้องครับ ลองใหม่นะครับ"}
+        if interval_minutes < 1:
+            return {"success": False, "message": "ระยะเวลาต้องอย่างน้อย 1 นาทีครับ"}
+
         sheet = _sheet()
         records = sheet.get_all_records()
         active_count = sum(
@@ -76,6 +87,8 @@ def get_all_due_interval_reminders() -> list:
                 nf = datetime.fromisoformat(next_fire_str)
                 if nf.tzinfo is None:
                     nf = _BKK.localize(nf)
+                else:
+                    nf = nf.astimezone(_BKK)
                 if now >= nf:
                     result.append({
                         "row_index": i + 2,
