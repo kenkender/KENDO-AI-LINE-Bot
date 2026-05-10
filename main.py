@@ -37,7 +37,7 @@ from handlers.reminder import (handle_note, handle_reminder, handle_cancel,
                                handle_interval_set, handle_interval_list, handle_interval_cancel)
 from handlers.bill import handle_bill_add, handle_bill_list, handle_bill_delete
 from handlers.watchlist import handle_watch_add, handle_watch_list, handle_watch_done
-from handlers.summary import handle_summary, handle_analyze, handle_briefing_set, handle_compare
+from handlers.summary import handle_summary, handle_analyze, handle_briefing_set, handle_compare, handle_compare_days
 from handlers.info import (
     handle_news_thai, handle_news_world, handle_news_tech, handle_news_search,
     handle_weather, handle_air_quality, handle_holiday, handle_oil_price,
@@ -157,7 +157,7 @@ CAPABILITIES_MESSAGE = (
 
     "💰 การเงินส่วนตัว\n"
     "  • บันทึกรายจ่าย / รายรับ\n"
-    "  • สรุปรายเดือน / เปรียบเทียบ 2 เดือน\n"
+    "  • สรุปรายเดือน / เปรียบเทียบ 2 เดือน หรือ 2 วัน\n"
     "  • วิเคราะห์พฤติกรรมการใช้จ่าย (AI)\n"
     "  • ตั้งงบประมาณ + เป้าหมายออม\n"
     "  • ดูรายจ่ายวันนี้ / ค้นหารายการ\n"
@@ -388,7 +388,7 @@ def handle_message(event: MessageEvent):
             case "NEWS_SEARCH":     handle_news_search(send, parsed)
             case "WEATHER":         handle_weather(send, parsed)
             case "AIR_QUALITY":     handle_air_quality(send, parsed)
-            case "TODAY_EXPENSE":   handle_today_expense(send, user_id)
+            case "TODAY_EXPENSE":   handle_today_expense(send, user_id, parsed)
             case "SPLIT_BILL":      handle_split_bill(send, parsed)
             case "WATCH_ADD":       handle_watch_add(send, user_id, parsed)
             case "WATCH_LIST":      handle_watch_list(send, user_id)
@@ -407,6 +407,7 @@ def handle_message(event: MessageEvent):
             case "TRENDS":          handle_trends(send)
             case "SMART_SEARCH":    handle_smart_search(send, parsed)
             case "COMPARE":         handle_compare(send, parsed)
+            case "COMPARE_DAYS":    handle_compare_days(send, user_id, parsed)
             case "RECURRING_ADD":   handle_recurring_add(send, user_id, parsed)
             case "RECURRING_LIST":  handle_recurring_list(send, user_id)
             case "RECURRING_DELETE": handle_recurring_delete(send, user_id, parsed)

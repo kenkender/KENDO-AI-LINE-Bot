@@ -160,8 +160,10 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
               "คุณภาพอากาศวันนี้" "อากาศเป็นพิษไหมที่เลย" "ฝุ่นควัน"
     note = ชื่อสถานที่ (ถ้าไม่ระบุให้ใช้ "กรุงเทพ" เป็น default)
 
-- TODAY_EXPENSE = ดูรายรับรายจ่ายวันนี้เท่านั้น
+- TODAY_EXPENSE = ดูรายรับรายจ่ายของวันที่ระบุ (ถ้าไม่ระบุวันให้ถือว่าเป็นวันนี้)
     ตัวอย่าง: "วันนี้ใช้ไปเท่าไหร่" "ยอดวันนี้" "วันนี้จ่ายอะไรไปบ้าง" "รายการวันนี้" "ค่าใช้จ่ายวันนี้"
+              "เมื่อวาน" "รายจ่ายเมื่อวาน" "เมื่อวานใช้ไปเท่าไหร่" "วันก่อนหน้า" "รายการวันเมื่อวาน"
+    ⚠️ ห้าม parse "เมื่อวาน" เป็น COMPARE — "เมื่อวาน" หมายถึงวันก่อนหน้าตรงนี้ เท่านั้น
 
 - SPLIT_BILL = หารค่าใช้จ่ายกับเพื่อน
     ตัวอย่าง: "หารกับเพื่อน 3 คน ค่าอาหาร 480" "หาร 480 บาท 4 คน" "หารบิล 600 บาท 3 คน" "แบ่ง 900 สามคน"
@@ -262,6 +264,15 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
     ตัวอย่าง: "เปรียบเทียบเดือนนี้กับเดือนที่แล้ว" "เดือนนี้ใช้เงินมากกว่าเดือนที่แล้วไหม" "compare เดือน 4 กับ เดือน 5" "เดือนที่แล้วกับเดือนนี้ต่างกันยังไง"
     summary_month = เดือนอ้างอิง (เดือนปัจจุบัน ถ้าไม่ระบุ)
     summary_year = ปีอ้างอิง (ปีปัจจุบัน ถ้าไม่ระบุ)
+    ⚠️ ใช้เฉพาะเมื่อ user ระบุ "เดือน" — ถ้ามีการระบุ "วันที่" ให้ใช้ COMPARE_DAYS แทน
+
+- COMPARE_DAYS = เปรียบเทียบรายรับรายจ่ายระหว่าง 2 วันที่เฉพาะ
+    ตัวอย่าง: "เปรียบเทียบวันนี้กับเมื่อวาน" "วันที่ 10 พ.ค. กับ 15 พ.ค."
+              "เปรียบเทียบวันที่ 10 กับ 15" "วันก่อนใช้เงินมากกว่าวันนี้ไหม"
+              "เปรียบเทียบวันที่ 10 พ.ค.69 กับ 15 พ.ค.69"
+    date_a = วันแรก ในรูปแบบ "YYYY-MM-DD" (null = เมื่อวาน ถ้าไม่ระบุ)
+    date_b = วันที่สอง ในรูปแบบ "YYYY-MM-DD" (null = วันนี้ ถ้าไม่ระบุ)
+    ⚠️ ปีพ.ศ. 69 = ค.ศ. 2026, 68 = 2025 (ปีไทย 2 หลักให้บวก 2500-1 = 2025 base)
 
 - CHAT     = คำถามทั่วไป ขอคำแนะนำ ทักทาย หรือคุยเรื่องอื่นที่ไม่ใช่การเงิน
     ตัวอย่าง: "สวัสดี" "แปลญี่ปุ่นให้" "คอมช้าทำไง" "แมวกินอะไรได้บ้าง"
@@ -319,7 +330,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | TRENDS | SMART_SEARCH | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | INTERVAL_REMINDER_SET | INTERVAL_REMINDER_LIST | INTERVAL_REMINDER_CANCEL | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | TRENDS | SMART_SEARCH | COMPARE | COMPARE_DAYS | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | INTERVAL_REMINDER_SET | INTERVAL_REMINDER_LIST | INTERVAL_REMINDER_CANCEL | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -339,6 +350,8 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "holiday_year": "int (ปี ค.ศ.) | null — ใช้เฉพาะ HOLIDAY: ปีที่ต้องการดู (null = ปีปัจจุบัน)",
   "holiday_month": "int (1-12) | null — ใช้เฉพาะ HOLIDAY: เดือนที่ต้องการดู (null = ทั้งปี)",
   "near_only": "bool | null — ใช้เฉพาะ HOLIDAY: true ถ้าถามวันหยุดใกล้ๆ ที่จะมาถึง",
+  "date_a": "YYYY-MM-DD | null — ใช้เฉพาะ COMPARE_DAYS: วันแรกที่ต้องการเปรียบเทียบ (null = เมื่อวาน)",
+  "date_b": "YYYY-MM-DD | null — ใช้เฉพาะ COMPARE_DAYS: วันที่สองที่ต้องการเปรียบเทียบ (null = วันนี้)",
   "items": [{"name": "string", "amount": float, "category": "string"}] หรือ null — ใช้เฉพาะ RECURRING_ADD: รายการซ้ำทั้งหมดที่ user พิมพ์มา,
   "remind_day": int (1-31) หรือ 0 (ปิด) หรือ null — ใช้เฉพาะ RECURRING_SET_REMIND: วันที่ต้องการรับแจ้งเตือน,
   "confidence": 0.0-1.0

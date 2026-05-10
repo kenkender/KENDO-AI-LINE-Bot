@@ -58,19 +58,21 @@ def get_summary(month: int = None, year: int = None) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def get_today_summary(user_id: str = None) -> dict:
+def get_date_summary(user_id: str = None, date: datetime = None) -> dict:
+    """ดึง summary ของวันที่เฉพาะ (default = วันนี้)"""
     try:
         spreadsheet = get_sheet_client()
         sheet = spreadsheet.worksheet("transactions")
-        now = datetime.now(pytz.timezone("Asia/Bangkok"))
-        today_str = now.strftime("%Y-%m-%d")
+        if date is None:
+            date = datetime.now(pytz.timezone("Asia/Bangkok"))
+        date_str = date.strftime("%Y-%m-%d") if isinstance(date, datetime) else str(date)
         records = sheet.get_all_records()
         total_income, total_expense = 0.0, 0.0
         expense_by_category: dict = {}
         transactions = []
         for record in records:
             ts = str(record.get("timestamp", ""))
-            if not ts.startswith(today_str):
+            if not ts.startswith(date_str):
                 continue
             if user_id and record.get("source_user_id", "") != user_id:
                 continue
@@ -87,13 +89,49 @@ def get_today_summary(user_id: str = None) -> dict:
                 expense_by_category[cat] = expense_by_category.get(cat, 0.0) + amount
                 transactions.append({"type": "EXPENSE", "note": record.get("note", ""), "amount": amount, "category": cat})
         return {
-            "success": True, "date": today_str, "total_income": total_income,
+            "success": True, "date": date_str, "total_income": total_income,
             "total_expense": total_expense, "balance": total_income - total_expense,
             "expense_by_category": expense_by_category, "transactions": transactions
         }
     except Exception as e:
-        print(f"[db.summary] get_today_summary error: {e}")
+        print(f"[db.summary] get_date_summary error: {e}")
         return {"success": False, "error": str(e)}
+
+
+def get_today_summary(user_id: str = None) -> dict:
+    return get_date_summary(user_id, datetime.now(pytz.timezone("Asia/Bangkok")))
+
+
+def get_compare_days_summary(user_id: str, date_a, date_b) -> dict:
+    """เปรียบเทียบ summary ของ 2 วัน — date_a, date_b เป็น string YYYY-MM-DD หรือ datetime"""
+    _BKK = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(_BKK)
+
+    if date_a is None:
+        from datetime import timedelta
+        date_a = now - timedelta(days=1)
+    if date_b is None:
+        date_b = now
+
+    if isinstance(date_a, str):
+        try:
+            date_a = datetime.fromisoformat(date_a)
+        except:
+            from datetime import timedelta
+            date_a = now - timedelta(days=1)
+    if isinstance(date_b, str):
+        try:
+            date_b = datetime.fromisoformat(date_b)
+        except:
+            date_b = now
+
+    a = get_date_summary(user_id, date_a)
+    b = get_date_summary(user_id, date_b)
+    return {
+        "a": a, "b": b,
+        "date_a": date_a.strftime("%Y-%m-%d") if isinstance(date_a, datetime) else str(date_a),
+        "date_b": date_b.strftime("%Y-%m-%d") if isinstance(date_b, datetime) else str(date_b),
+    }
 
 
 _THAI_MONTHS_FULL = {
