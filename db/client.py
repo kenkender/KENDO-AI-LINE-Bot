@@ -28,8 +28,11 @@ def get_sheet_client():
 
 def get_or_create_sheet(spreadsheet, name: str, headers: list):
     try:
-        return spreadsheet.worksheet(name)
+        sheet = spreadsheet.worksheet(name)
     except Exception:
         sheet = spreadsheet.add_worksheet(title=name, rows=1000, cols=len(headers))
         sheet.append_row(headers)
         return sheet
+    if not sheet.row_values(1):
+        sheet.append_row(headers)
+    return sheet

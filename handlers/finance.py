@@ -1,6 +1,7 @@
 from db import (
     append_transaction, delete_last_transaction, search_transactions,
     get_summary, format_quick_summary, get_budget_status,
+    get_date_summary, get_compare_days_summary,
 )
 from flex_builder import build_expense_card, build_income_card, build_today_card
 
@@ -69,25 +70,49 @@ def handle_search(send, user_id, parsed):
         send("\n".join(lines), quick_reply=True)
 
 
-def handle_today_expense(send, user_id):
-    from db import get_today_summary
-    data = get_today_summary(user_id)
+def handle_today_expense(send, user_id, parsed=None):
+    from datetime import datetime
+    import pytz
+
+    bkk = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(bkk)
+    target_date = now
+
+    if parsed and parsed.get("target_date"):
+        try:
+            target_date = datetime.fromisoformat(parsed["target_date"])
+            if target_date.tzinfo is None:
+                target_date = bkk.localize(target_date)
+        except Exception:
+            target_date = now
+
+    is_today = target_date.date() == now.date()
+    date_display = "วันนี้" if is_today else target_date.strftime("%d/%m/%Y")
+
+    data = get_date_summary(user_id, target_date)
+
     if not data["success"] or (data["total_income"] == 0 and data["total_expense"] == 0):
-        send("📭 ยังไม่มีรายการวันนี้เลยครับ", quick_reply=True)
+        send(f"📭 ยังไม่มีรายการ{date_display}เลยครับ", quick_reply=True)
         return
     flex = build_today_card(data)
-    send.flex("📊 สรุปวันนี้", flex, quick_reply=True)
+    send.flex(f"📊 สรุป{date_display}", flex, quick_reply=True)
 
 
 def handle_split_bill(send, parsed):
     amount = parsed.get("amount")
     split_count = parsed.get("split_count")
-    if not amount or not split_count or int(split_count) <= 0:
+    try:
+        amount_f = float(amount) if amount is not None else 0
+        count_i = int(float(split_count)) if split_count is not None else 0
+    except (TypeError, ValueError):
+        amount_f, count_i = 0, 0
+
+    if not amount_f or count_i <= 0:
         send("🧾 บอกด้วยนะครับว่าหารเท่าไหร่ กี่คน\nเช่น: \"หารค่าอาหาร 480 บาท 3 คน\"")
     else:
-        per_person = float(amount) / int(split_count)
+        per_person = amount_f / count_i
         send(
-            f"🧾 หารบิล {float(amount):,.0f} บาท ÷ {int(split_count)} คน\n\n"
+            f"🧾 หารบิล {amount_f:,.0f} บาท ÷ {count_i} คน\n\n"
             f"💵 คนละ {per_person:,.2f} บาท",
             quick_reply=True
         )

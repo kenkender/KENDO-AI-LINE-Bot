@@ -3,6 +3,13 @@ import pytz
 from db.client import get_sheet_client
 
 
+def _safe_float(val) -> float:
+    try:
+        return float(val) if val not in (None, "", "None") else 0.0
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def append_transaction(user_id: str, raw_message: str, parsed: dict, status: str = "OK") -> bool:
     try:
         spreadsheet = get_sheet_client()
@@ -34,7 +41,7 @@ def delete_last_transaction(user_id: str) -> dict:
                 return {
                     "success": True,
                     "note": r.get("note", ""),
-                    "amount": float(r.get("amount", 0) or 0),
+                    "amount": _safe_float(r.get("amount")),
                     "intent": r.get("intent", "")
                 }
         return {"success": False}
@@ -63,7 +70,7 @@ def search_transactions(user_id: str, keyword: str) -> list:
                 results.append({
                     "intent": r.get("intent"),
                     "note": r.get("note", ""),
-                    "amount": float(r.get("amount", 0) or 0),
+                    "amount": _safe_float(r.get("amount")),
                     "category": r.get("category", ""),
                     "timestamp": r.get("timestamp", "")[:10]
                 })

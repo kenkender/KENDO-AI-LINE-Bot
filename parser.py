@@ -160,8 +160,14 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
               "คุณภาพอากาศวันนี้" "อากาศเป็นพิษไหมที่เลย" "ฝุ่นควัน"
     note = ชื่อสถานที่ (ถ้าไม่ระบุให้ใช้ "กรุงเทพ" เป็น default)
 
-- TODAY_EXPENSE = ดูรายรับรายจ่ายวันนี้เท่านั้น
-    ตัวอย่าง: "วันนี้ใช้ไปเท่าไหร่" "ยอดวันนี้" "วันนี้จ่ายอะไรไปบ้าง" "รายการวันนี้" "ค่าใช้จ่ายวันนี้"
+- TODAY_EXPENSE = ดูรายรับรายจ่ายของวันใดวันหนึ่ง (วันนี้ หรือ ย้อนหลัง)
+    ตัวอย่าง: "วันนี้ใช้ไปเท่าไหร่" "ยอดวันนี้" "รายการวันนี้" "เมื่อวานจ่ายอะไรไปบ้าง" "รายจ่ายเมื่อวาน" "ค่าใช้จ่ายวันที่ 5 พ.ค."
+    ⚠️ "เมื่อวาน" หรือ "วานนี้" = TODAY_EXPENSE ไม่ใช่ COMPARE
+    target_date = วันที่ต้องการ (ISO 8601) ถ้าไม่ใช่วันนี้ เช่น "2025-05-09" สำหรับ "เมื่อวาน"
+
+- COMPARE_DAYS = เปรียบเทียบรายรับรายจ่ายระหว่าง 2 วันที่ระบุ
+    ตัวอย่าง: "เปรียบเทียบวันที่ 10 พ.ค. กับ 15 พ.ค." "เทียบวันนี้กับเมื่อวาน" "รายจ่าย 5 พ.ค. vs 6 พ.ค."
+    date_a = วันที่แรก (ISO 8601), date_b = วันที่สอง (ISO 8601)
 
 - SPLIT_BILL = หารค่าใช้จ่ายกับเพื่อน
     ตัวอย่าง: "หารกับเพื่อน 3 คน ค่าอาหาร 480" "หาร 480 บาท 4 คน" "หารบิล 600 บาท 3 คน" "แบ่ง 900 สามคน"
@@ -319,7 +325,7 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
 
 โครงสร้าง JSON ที่ต้องตอบ:
 {
-  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | TRENDS | SMART_SEARCH | COMPARE | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | INTERVAL_REMINDER_SET | INTERVAL_REMINDER_LIST | INTERVAL_REMINDER_CANCEL | CHAT | UNKNOWN",
+  "intent": "EXPENSE | INCOME | NOTE | REMINDER | SUMMARY | CANCEL | ANALYZE | DELETE | SEARCH | BUDGET | SAVINGS | TASK_ADD | TASK_DONE | TASK_LIST | NEWS_THAI | NEWS_WORLD | NEWS_TECH | NEWS_SEARCH | WEATHER | AIR_QUALITY | TODAY_EXPENSE | SPLIT_BILL | WATCH_ADD | WATCH_LIST | WATCH_DONE | BILL_ADD | BILL_LIST | BILL_DELETE | BRIEFING_SET | HOLIDAY | OIL_PRICE | GOLD_PRICE | LOTTERY | TRENDS | SMART_SEARCH | COMPARE | COMPARE_DAYS | RECURRING_ADD | RECURRING_LIST | RECURRING_DELETE | RECURRING_SET_REMIND | INTERVAL_REMINDER_SET | INTERVAL_REMINDER_LIST | INTERVAL_REMINDER_CANCEL | CHAT | UNKNOWN",
   "amount": float หรือ null,
   "currency": "THB" หรือ null,
   "category": "string หรือ null",
@@ -336,6 +342,9 @@ Intent ที่รองรับ พร้อมตัวอย่างภา
   "briefing_hour": "int (0-23) | null — ใช้เฉพาะ BRIEFING_SET: ชั่วโมงที่ต้องการรับ briefing, null = ปิด",
   "briefing_minute": "int (0-59) | null — ใช้เฉพาะ BRIEFING_SET: นาที (default 0 ถ้าไม่ระบุ) เช่น 08:30 → briefing_hour:8, briefing_minute:30",
   "interval_minutes": "int | null — ใช้เฉพาะ INTERVAL_REMINDER_SET: จำนวนนาทีระหว่างการแจ้งเตือน (30 นาที→30, 2 ชั่วโมง→120, 1.5 ชั่วโมง→90)",
+  "target_date": "ISO8601 date string | null — ใช้เฉพาะ TODAY_EXPENSE เมื่อ user ถามวันที่ไม่ใช่วันนี้ เช่น 'เมื่อวาน' → 'YYYY-MM-DD' ของเมื่อวาน",
+  "date_a": "ISO8601 date string | null — ใช้เฉพาะ COMPARE_DAYS: วันที่แรก เช่น '2025-05-10'",
+  "date_b": "ISO8601 date string | null — ใช้เฉพาะ COMPARE_DAYS: วันที่สอง เช่น '2025-05-15'",
   "holiday_year": "int (ปี ค.ศ.) | null — ใช้เฉพาะ HOLIDAY: ปีที่ต้องการดู (null = ปีปัจจุบัน)",
   "holiday_month": "int (1-12) | null — ใช้เฉพาะ HOLIDAY: เดือนที่ต้องการดู (null = ทั้งปี)",
   "near_only": "bool | null — ใช้เฉพาะ HOLIDAY: true ถ้าถามวันหยุดใกล้ๆ ที่จะมาถึง",

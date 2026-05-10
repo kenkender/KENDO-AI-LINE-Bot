@@ -1,4 +1,4 @@
-from db import get_summary, format_summary_message, get_compare_summary, get_budget_status
+from db import get_summary, format_summary_message, get_compare_summary, get_budget_status, get_compare_days_summary
 from parser import analyze_with_ai
 from db import set_briefing
 from flex_builder import build_summary_card
@@ -108,6 +108,78 @@ def handle_compare(send, parsed):
         lines.append("📉 หมวดที่ใช้ลดลง:")
         for cat, d in top_decrease:
             if d < 0:
+                lines.append(f"  • {cat}: {d:,.0f} บาท")
+
+    send("\n".join(lines), quick_reply=True)
+
+
+def handle_compare_days(send, user_id, parsed):
+    """เปรียบเทียบรายรับ-รายจ่ายระหว่าง 2 วันที่ระบุ"""
+    from datetime import datetime
+    import pytz
+    bkk = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(bkk)
+
+    date_a_str = parsed.get("date_a", "")
+    date_b_str = parsed.get("date_b", "")
+
+    def _parse_date(s):
+        if not s:
+            return None
+        try:
+            d = datetime.fromisoformat(s)
+            return bkk.localize(d) if d.tzinfo is None else d.astimezone(bkk)
+        except Exception:
+            return None
+
+    date_a = _parse_date(date_a_str) or now
+    date_b = _parse_date(date_b_str) or now
+
+    compare = get_compare_days_summary(user_id, date_a, date_b)
+    a = compare["a"]
+    b = compare["b"]
+
+    if not a["success"] or not b["success"]:
+        send("❌ ไม่สามารถดึงข้อมูลเปรียบเทียบได้ครับ")
+        return
+
+    label_a = date_a.strftime("%d/%m/%Y")
+    label_b = date_b.strftime("%d/%m/%Y")
+
+    def _arrow(val_b, val_a):
+        if val_b > val_a: return "📈"
+        if val_b < val_a: return "📉"
+        return "➡️"
+
+    def _diff(val_b, val_a):
+        d = val_b - val_a
+        return f"{'+'if d>=0 else ''}{d:,.0f}"
+
+    lines = [
+        f"📊 เปรียบเทียบ {label_a} vs {label_b}",
+        "",
+        f"{'':8s}  {'วันที่ก่อน':>12s}  {'วันที่หลัง':>12s}  เปลี่ยน",
+        f"{'─'*52}",
+        f"💰 รายรับ  {a['total_income']:>12,.0f}  {b['total_income']:>12,.0f}  {_arrow(b['total_income'],a['total_income'])} {_diff(b['total_income'],a['total_income'])}",
+        f"💸 รายจ่าย {a['total_expense']:>12,.0f}  {b['total_expense']:>12,.0f}  {_arrow(b['total_expense'],a['total_expense'])} {_diff(b['total_expense'],a['total_expense'])}",
+        f"{'✅'if b['balance']>=0 else '⚠️'} คงเหลือ  {a['balance']:>12,.0f}  {b['balance']:>12,.0f}  {_arrow(b['balance'],a['balance'])} {_diff(b['balance'],a['balance'])}",
+    ]
+
+    all_cats = set(a["expense_by_category"]) | set(b["expense_by_category"])
+    if all_cats:
+        diffs = {
+            cat: b["expense_by_category"].get(cat, 0) - a["expense_by_category"].get(cat, 0)
+            for cat in all_cats
+        }
+        top_increase = [(c, d) for c, d in sorted(diffs.items(), key=lambda x: -x[1]) if d > 0][:2]
+        top_decrease = [(c, d) for c, d in sorted(diffs.items(), key=lambda x: x[1]) if d < 0][:2]
+        if top_increase:
+            lines.append("\n📈 หมวดที่ใช้เพิ่มขึ้น:")
+            for cat, d in top_increase:
+                lines.append(f"  • {cat}: +{d:,.0f} บาท")
+        if top_decrease:
+            lines.append("📉 หมวดที่ใช้ลดลง:")
+            for cat, d in top_decrease:
                 lines.append(f"  • {cat}: {d:,.0f} บาท")
 
     send("\n".join(lines), quick_reply=True)
