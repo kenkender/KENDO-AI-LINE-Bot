@@ -1,7 +1,7 @@
 from db import (
     append_transaction, delete_last_transaction, search_transactions,
     get_summary, format_quick_summary, get_budget_status,
-    get_date_summary, get_compare_days_summary,
+    get_today_summary, get_date_summary,
 )
 from flex_builder import build_expense_card, build_income_card, build_today_card
 
@@ -71,18 +71,18 @@ def handle_search(send, user_id, parsed):
 
 
 def handle_today_expense(send, user_id, parsed=None):
-    from datetime import datetime
+    from datetime import datetime, timedelta
     import pytz
 
-    bkk = pytz.timezone("Asia/Bangkok")
-    now = datetime.now(bkk)
-    target_date = now
+    bangkok_tz = pytz.timezone("Asia/Bangkok")
+    now = datetime.now(bangkok_tz)
 
+    target_date = now
     if parsed and parsed.get("target_date"):
         try:
             target_date = datetime.fromisoformat(parsed["target_date"])
             if target_date.tzinfo is None:
-                target_date = bkk.localize(target_date)
+                target_date = bangkok_tz.localize(target_date)
         except Exception:
             target_date = now
 
@@ -95,7 +95,8 @@ def handle_today_expense(send, user_id, parsed=None):
         send(f"📭 ยังไม่มีรายการ{date_display}เลยครับ", quick_reply=True)
         return
     flex = build_today_card(data)
-    send.flex(f"📊 สรุป{date_display}", flex, quick_reply=True)
+    title = f"📊 สรุป{date_display}"
+    send.flex(title, flex, quick_reply=True)
 
 
 def handle_split_bill(send, parsed):
