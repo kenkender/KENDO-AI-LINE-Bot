@@ -101,11 +101,13 @@ def format_lottery_message(result: dict) -> str:
     if result.get("last2"):
         lines.append(f"🔢 เลขท้าย 2 ตัว:    {result['last2']}")
 
-    if result.get("last3"):
-        lines.append(f"3️⃣  เลขท้าย 3 ตัว:    {' | '.join(result['last3'])}")
+    last3 = [str(x) for x in (result.get("last3") or []) if x]
+    if last3:
+        lines.append(f"3️⃣  เลขท้าย 3 ตัว:    {' | '.join(last3)}")
 
-    if result.get("front3"):
-        lines.append(f"3️⃣  เลขหน้า 3 ตัว:    {' | '.join(result['front3'])}")
+    front3 = [str(x) for x in (result.get("front3") or []) if x]
+    if front3:
+        lines.append(f"3️⃣  เลขหน้า 3 ตัว:    {' | '.join(front3)}")
 
     lines.append("\n📡 ข้อมูล: สำนักงานสลากกินแบ่งรัฐบาล")
     return "\n".join(lines)

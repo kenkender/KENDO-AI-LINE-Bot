@@ -15,21 +15,40 @@ CACHE_TTL_AQ = 60 * 60  # 1 ชั่วโมง
 
 
 # ── มาตรฐาน PM2.5 ของกรมควบคุมมลพิษไทย (μg/m³) ─────────────────────────────
+# Severity 0-5: ยิ่งสูงยิ่งแย่ — ใช้เปรียบเทียบกับ US AQI เพื่อเลือก display ที่แย่กว่า
 AQI_LEVELS = [
-    (25,  "🟢", "ดีมาก",                   "อากาศบริสุทธิ์ เหมาะกับกิจกรรมกลางแจ้งทุกประเภท"),
-    (37,  "🟢", "ดี",                       "อากาศดี ไม่มีผลต่อสุขภาพ"),
-    (50,  "🟡", "ปานกลาง",                  "กลุ่มเสี่ยง (หอบหืด/โรคปอด) ควรระวัง"),
-    (90,  "🟠", "เริ่มมีผลต่อสุขภาพ",        "ลดกิจกรรมกลางแจ้งนานๆ สวมหน้ากากถ้าออกนอกบ้าน"),
-    (120, "🔴", "มีผลต่อสุขภาพ",             "หลีกเลี่ยงกิจกรรมกลางแจ้ง สวมหน้ากาก N95"),
-    (float("inf"), "🟣", "อันตราย",         "อยู่ในอาคาร ปิดหน้าต่าง สวมหน้ากาก N95 ตลอดเวลา"),
+    (25,  0, "🟢", "ดีมาก",                   "อากาศบริสุทธิ์ เหมาะกับกิจกรรมกลางแจ้งทุกประเภท"),
+    (37,  1, "🟢", "ดี",                       "อากาศดี ไม่มีผลต่อสุขภาพ"),
+    (50,  2, "🟡", "ปานกลาง",                  "กลุ่มเสี่ยง (หอบหืด/โรคปอด) ควรระวัง"),
+    (90,  3, "🟠", "เริ่มมีผลต่อสุขภาพ",        "ลดกิจกรรมกลางแจ้งนานๆ สวมหน้ากากถ้าออกนอกบ้าน"),
+    (120, 4, "🔴", "มีผลต่อสุขภาพ",             "หลีกเลี่ยงกิจกรรมกลางแจ้ง สวมหน้ากาก N95"),
+    (float("inf"), 5, "🟣", "อันตราย",         "อยู่ในอาคาร ปิดหน้าต่าง สวมหน้ากาก N95 ตลอดเวลา"),
+]
+
+# ── US AQI scale (EPA) ──────────────────────────────────────────────────────
+# ใช้เป็น secondary indicator ครอบคลุม pollutants อื่นนอก PM2.5 (O3, NO2, CO, SO2)
+US_AQI_LEVELS = [
+    (50,  0, "🟢", "ดีมาก",                   "อากาศบริสุทธิ์ เหมาะกับกิจกรรมกลางแจ้งทุกประเภท"),
+    (100, 2, "🟡", "ปานกลาง",                  "กลุ่มเสี่ยงควรระวัง"),
+    (150, 3, "🟠", "เริ่มมีผลต่อสุขภาพ",        "กลุ่มเสี่ยงลดกิจกรรมกลางแจ้ง"),
+    (200, 4, "🔴", "มีผลต่อสุขภาพ",             "ทุกคนควรลดกิจกรรมกลางแจ้ง สวมหน้ากาก N95"),
+    (300, 5, "🟣", "มีผลต่อสุขภาพรุนแรง",       "อยู่ในอาคาร สวมหน้ากาก N95"),
+    (float("inf"), 5, "🟣", "อันตราย",         "อยู่ในอาคาร ปิดหน้าต่าง สวมหน้ากาก N95 ตลอดเวลา"),
 ]
 
 
-def _classify_pm25(value: float) -> tuple[str, str, str]:
-    for threshold, dot, label, advice in AQI_LEVELS:
+def _classify_pm25(value: float) -> tuple[int, str, str, str]:
+    for threshold, sev, dot, label, advice in AQI_LEVELS:
         if value <= threshold:
-            return dot, label, advice
-    return "🟣", "อันตราย", "อยู่ในอาคาร ปิดหน้าต่าง สวมหน้ากาก N95"
+            return sev, dot, label, advice
+    return 5, "🟣", "อันตราย", "อยู่ในอาคาร ปิดหน้าต่าง สวมหน้ากาก N95"
+
+
+def _classify_us_aqi(value: float) -> tuple[int, str, str, str]:
+    for threshold, sev, dot, label, advice in US_AQI_LEVELS:
+        if value <= threshold:
+            return sev, dot, label, advice
+    return 5, "🟣", "อันตราย", "อยู่ในอาคาร ปิดหน้าต่าง สวมหน้ากาก N95"
 
 
 def get_air_quality(place: str) -> dict:
@@ -90,7 +109,16 @@ def _format_aq(data: dict, place: str) -> dict:
     if pm25 is None:
         return {"success": False, "message": "❌ ไม่มีข้อมูล PM2.5 สำหรับพื้นที่นี้ครับ"}
 
-    dot, label, advice = _classify_pm25(pm25)
+    # เลือกระดับที่แย่กว่าระหว่าง PM2.5 (Thai standard) และ US AQI (รวม pollutants อื่น)
+    pm_sev, pm_dot, pm_label, pm_advice = _classify_pm25(pm25)
+    if us_aqi is not None:
+        aqi_sev, aqi_dot, aqi_label, aqi_advice = _classify_us_aqi(us_aqi)
+        if aqi_sev > pm_sev:
+            sev, dot, label, advice = aqi_sev, aqi_dot, aqi_label, aqi_advice
+        else:
+            sev, dot, label, advice = pm_sev, pm_dot, pm_label, pm_advice
+    else:
+        sev, dot, label, advice = pm_sev, pm_dot, pm_label, pm_advice
 
     bkk_tz = pytz.timezone("Asia/Bangkok")
     now_str = datetime.now(bkk_tz).strftime("%H:%M น.")
@@ -112,10 +140,10 @@ def _format_aq(data: dict, place: str) -> dict:
         f"💡 {advice}",
     ]
 
-    # คำแนะนำหน้ากาก
-    if pm25 > 50:
+    # คำแนะนำหน้ากาก — ใช้ severity สูงสุดที่เลือก
+    if sev >= 3:
         lines.append("😷 แนะนำสวมหน้ากาก N95 ครับ")
-    elif pm25 > 37:
+    elif sev == 2:
         lines.append("😷 กลุ่มเสี่ยงควรสวมหน้ากากด้วยนะครับ")
 
     return {"success": True, "message": "\n".join(lines)}
