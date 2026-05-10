@@ -447,6 +447,7 @@ async def check_reminders():
 
     while True:
         try:
+            loop = asyncio.get_running_loop()
             bangkok_tz = pytz.timezone("Asia/Bangkok")
             now = datetime.now(bangkok_tz)
             print(f"[scheduler] Checking at: {now.isoformat()}")
