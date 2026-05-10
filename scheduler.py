@@ -243,10 +243,14 @@ async def fetch_reminder_extras(user_id: str, extras_str: str, note: str = "") -
     return "\n\n".join(parts_out)
 
 
-async def send_morning_briefing(user_id: str, city: str):
-    """ส่ง morning briefing: อากาศ + ค่าฝุ่น + เตือนวันนี้"""
+async def send_morning_briefing(user_id: str, city: str, now: datetime = None):
+    """ส่ง morning briefing: อากาศ + ค่าฝุ่น + เตือนวันนี้ + holiday greeting (ถ้าวันหยุด)"""
     from weather_service import get_weather
     from airquality_service import get_air_quality
+
+    if now is None:
+        bangkok_tz = pytz.timezone("Asia/Bangkok")
+        now = datetime.now(bangkok_tz)
 
     loop = asyncio.get_running_loop()
     parts = ["🌅 Morning Briefing จาก KENDO AI 🤖\n"]
@@ -274,6 +278,29 @@ async def send_morning_briefing(user_id: str, city: str):
             parts.append("⏰ ไม่มีนัดหมายวันนี้ครับ")
     except Exception as e:
         print(f"[scheduler] briefing reminders error: {e}")
+
+    # Holiday greeting — รวมเข้ากับ briefing ถ้าเป็นวันหยุด/สุดสัปดาห์
+    try:
+        is_weekend = now.weekday() >= 5
+        holiday_name = await loop.run_in_executor(None, get_thai_holiday_today)
+        is_holiday = bool(holiday_name)
+        if is_weekend or is_holiday:
+            if is_holiday:
+                day_type = "public_holiday"
+            elif now.weekday() == 5:
+                day_type = "saturday"
+            else:
+                day_type = "sunday"
+            greeting = await generate_holiday_greeting(day_type, holiday_name or "")
+            if day_type == "public_holiday":
+                header = f"🎉 {holiday_name}\n\n"
+            elif day_type == "saturday":
+                header = "🌤 วันเสาร์\n\n"
+            else:
+                header = "☀️ วันอาทิตย์\n\n"
+            parts.append(header + greeting)
+    except Exception as e:
+        print(f"[scheduler] briefing holiday greeting error: {e}")
 
     parts.append("— มีวันที่ดีนะครับ 😊")
     await send_push_message(user_id, "\n\n".join(parts))
@@ -446,7 +473,6 @@ async def check_reminders():
     budget_warned_hour = None
     bill_checked_date = None
     briefing_sent: dict = {}  # {user_id: date}
-    holiday_greeted_date = None
     recurring_reminded_today: set = set()
     recurring_reminded_date = None  # วันที่ reset recurring_reminded_today ล่าสุด
     deepseek_balance_checked_hour = None  # เช็คทุก 6 ชั่วโมง
@@ -469,11 +495,6 @@ async def check_reminders():
             if budget_warned_hour != current_hour and now.minute == 0:
                 budget_warned_hour = current_hour
                 await check_budget_warnings()
-
-            # Holiday greeting — วันเสาร์/อาทิตย์/หยุดราชการ เวลา 08:00
-            if now.hour == 8 and now.minute == 0 and holiday_greeted_date != now.date():
-                holiday_greeted_date = now.date()
-                await send_holiday_greetings(now)
 
             # Bill reminders — วันละครั้ง เวลา 09:00
             if now.hour == 9 and now.minute == 0 and bill_checked_date != now.date():
@@ -512,7 +533,7 @@ async def check_reminders():
                             and bu.get("minute", 0) == now.minute
                             and briefing_sent.get(bu["user_id"]) != now.date()):
                         briefing_sent[bu["user_id"]] = now.date()
-                        await send_morning_briefing(bu["user_id"], bu["city"])
+                        await send_morning_briefing(bu["user_id"], bu["city"], now)
                         print(f"[scheduler] Morning briefing sent to {bu['user_id']}")
             except Exception as e:
                 print(f"[scheduler] briefing check error: {e}")
