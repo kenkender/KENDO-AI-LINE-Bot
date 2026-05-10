@@ -75,27 +75,27 @@ def handle_today_expense(send, user_id, parsed=None):
     import pytz
 
     bangkok_tz = pytz.timezone("Asia/Bangkok")
-    target_date = None
+    now = datetime.now(bangkok_tz)
 
-    if parsed and parsed.get("reminder_datetime"):
+    target_date = now
+    if parsed and parsed.get("target_date"):
         try:
-            target_date = datetime.fromisoformat(parsed["reminder_datetime"])
+            target_date = datetime.fromisoformat(parsed["target_date"])
             if target_date.tzinfo is None:
                 target_date = bangkok_tz.localize(target_date)
-        except:
-            pass
+        except Exception:
+            target_date = now
 
-    if not target_date:
-        target_date = datetime.now(bangkok_tz)
+    is_today = target_date.date() == now.date()
+    date_display = "วันนี้" if is_today else target_date.strftime("%d/%m/%Y")
 
     data = get_date_summary(user_id, target_date)
-    date_display = target_date.strftime("%d/%m/%Y")
 
     if not data["success"] or (data["total_income"] == 0 and data["total_expense"] == 0):
-        send(f"📭 ยังไม่มีรายการเมื่อวันที่ {date_display} เลยครับ", quick_reply=True)
+        send(f"📭 ยังไม่มีรายการ{date_display}เลยครับ", quick_reply=True)
         return
     flex = build_today_card(data)
-    title = f"📊 สรุปวันที่ {date_display}"
+    title = f"📊 สรุป{date_display}"
     send.flex(title, flex, quick_reply=True)
 
 
