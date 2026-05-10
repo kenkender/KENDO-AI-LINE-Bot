@@ -44,6 +44,7 @@ from handlers.info import (
     handle_gold_price, handle_lottery, handle_trends, handle_smart_search
 )
 from weather_service import get_weather_by_coords
+from airquality_service import get_air_quality_by_coords
 from handlers.recurring import handle_recurring_add, handle_recurring_list, handle_recurring_delete, handle_recurring_set_remind
 
 load_dotenv()
@@ -460,8 +461,21 @@ def handle_location_message(event: MessageEvent):
         lon = event.message.longitude
         print(f"[handle_location] GPS ({lat}, {lon}) from {user_id}")
 
-        result = get_weather_by_coords(lat, lon)
-        send(result["message"], quick_reply=True)
+        # ส่งพยากรณ์อากาศ + คุณภาพอากาศควบคู่กันในข้อความเดียว
+        weather = get_weather_by_coords(lat, lon)
+        aq = get_air_quality_by_coords(lat, lon)
+
+        parts = []
+        if weather.get("success"):
+            parts.append(weather["message"])
+        if aq.get("success"):
+            parts.append(aq["message"])
+
+        if not parts:
+            send("❌ ดึงข้อมูลอากาศจากพิกัดนี้ไม่ได้ครับ ลองใหม่อีกทีนะครับ", quick_reply=True)
+            return
+
+        send("\n\n".join(parts), quick_reply=True)
 
     except Exception as e:
         print(f"[handle_location] error: {e}")

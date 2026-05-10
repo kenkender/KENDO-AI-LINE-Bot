@@ -52,7 +52,10 @@ def _classify_us_aqi(value: float) -> tuple[int, str, str, str]:
 
 
 def get_air_quality(place: str) -> dict:
-    """ดึงค่า PM2.5 ของสถานที่ที่ระบุ"""
+    """ดึงค่า PM2.5 ของสถานที่ที่ระบุ
+    Layer 1: Air4Thai (สถานีจริง PCD ในรัศมี 30 km)
+    Layer 2: Open-Meteo (model-based fallback)
+    """
     place = place.strip()
 
     display_name, coords = _lookup_province(place)
@@ -72,10 +75,30 @@ def get_air_quality(place: str) -> dict:
         }
 
     lat, lon = coords
+    return _get_air_quality_by_coords(lat, lon, display_name or place)
+
+
+def get_air_quality_by_coords(lat: float, lon: float, place: str = "") -> dict:
+    """รับ GPS coords โดยตรง — ใช้กับ LINE location message"""
+    return _get_air_quality_by_coords(lat, lon, place or "พิกัด GPS")
+
+
+def _get_air_quality_by_coords(lat: float, lon: float, place: str) -> dict:
+    """internal: หา air quality จาก lat/lon — Air4Thai → Open-Meteo fallback"""
+    # Layer 1: Air4Thai (station-based, ในไทย รัศมี 30 km)
+    try:
+        from air4thai_service import get_air_quality_by_coords as _a4t, format_air4thai_message
+        a4t_data = _a4t(lat, lon)
+        if a4t_data:
+            return {"success": True, "message": format_air4thai_message(a4t_data, place)}
+    except Exception as e:
+        print(f"[airquality_service] Air4Thai error: {e} — falling back to Open-Meteo")
+
+    # Layer 2: Open-Meteo
     cache_key = f"aq_{round(lat, 3)}_{round(lon, 3)}"
     cached = _cache_get(cache_key)
     if cached:
-        return _format_aq(cached, display_name or place)
+        return _format_aq(cached, place)
 
     try:
         with httpx.Client(timeout=10) as client:
@@ -93,7 +116,7 @@ def get_air_quality(place: str) -> dict:
 
         data = resp.json()
         _cache_set(cache_key, data, ttl=CACHE_TTL_AQ)
-        return _format_aq(data, display_name or place)
+        return _format_aq(data, place)
 
     except Exception as e:
         print(f"[airquality_service] error: {e}")
