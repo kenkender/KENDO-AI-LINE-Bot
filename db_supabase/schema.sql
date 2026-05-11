@@ -98,9 +98,8 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 CREATE INDEX IF NOT EXISTS idx_tx_user_ts ON transactions(user_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_tx_user_intent ON transactions(user_id, intent, status);
-CREATE INDEX IF NOT EXISTS idx_tx_user_month
-    ON transactions(user_id, date_trunc('month', ts))
-    WHERE status = 'OK';
+-- หมายเหตุ: query สรุปเดือน ใช้ idx_tx_user_ts ก็เร็วพอ
+-- (WHERE user_id = ? AND ts >= '...' AND ts < '...')
 
 
 -- ============================================================================
