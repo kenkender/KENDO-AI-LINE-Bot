@@ -137,12 +137,25 @@ def get_nearest_province(lat: float, lon: float) -> str:
 
 
 def get_weather_by_coords(lat: float, lon: float) -> dict:
-    """ดึงพยากรณ์อากาศจากพิกัด GPS โดยตรง"""
+    """ดึงพยากรณ์อากาศจากพิกัด GPS โดยตรง
+    Layer 1: TMD nwpapi (ในไทย)
+    Layer 2: Open-Meteo + stale cache (fallback)
+    """
     province = get_nearest_province(lat, lon)
-    # ใช้พิกัด GPS จริงสำหรับ Open-Meteo แต่ใช้ชื่อจังหวัดสำหรับ TMD
+    display_name = f"พิกัด GPS (ใกล้{province})"
+
+    # Layer 1: TMD (ทำงานเฉพาะพิกัดในไทย + มี token)
+    try:
+        from tmd_service import get_tmd_weather, format_tmd_weather
+        tmd_data = get_tmd_weather(lat, lon)
+        if tmd_data:
+            return format_tmd_weather(tmd_data, display_name)
+    except Exception as e:
+        print(f"[weather_service] TMD error: {e} — falling back to Open-Meteo")
+
+    # Layer 2: Open-Meteo
     cache_key = f"weather_{round(lat, 3)}_{round(lon, 3)}"
     cached = _cache_get(cache_key)
-    display_name = f"พิกัด GPS (ใกล้{province})"
 
     if cached:
         weather = _format_weather(cached, display_name)
@@ -385,6 +398,16 @@ def get_weather(place: str) -> dict:
         }
 
     lat, lon = coords
+
+    # Layer 1: TMD nwpapi (ในไทย + มี token)
+    try:
+        from tmd_service import get_tmd_weather, format_tmd_weather
+        tmd_data = get_tmd_weather(lat, lon)
+        if tmd_data:
+            return format_tmd_weather(tmd_data, display_name or place)
+    except Exception as e:
+        print(f"[weather_service] TMD error: {e} — falling back to Open-Meteo")
+
     cache_key = f"weather_{round(lat,3)}_{round(lon,3)}"
     cached = _cache_get(cache_key)
     if cached:
