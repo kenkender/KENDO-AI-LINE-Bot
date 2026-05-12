@@ -3,6 +3,11 @@ import calendar as cal
 from datetime import datetime, timedelta
 import pytz
 from db.client import get_sheet_client
+from db_supabase import safe_write
+from db_supabase.notes import (
+    append_note as _sb_append_note,
+    create_recurring_reminder as _sb_create_recurring,
+)
 
 
 def append_note(user_id: str, raw_message: str, parsed: dict, calendar_event_id: str = "", status: str = "OK") -> bool:
@@ -23,6 +28,9 @@ def append_note(user_id: str, raw_message: str, parsed: dict, calendar_event_id:
             parsed.get("reminder_datetime", ""), calendar_event_id, status
         ]
         sheet.append_row(row, value_input_option="USER_ENTERED")
+        # Dual-write Supabase — note สะอาด (ไม่มี [EXTRAS:]/[RECUR:])
+        # เพราะ Supabase มี column แยกสำหรับ extras + recurrence
+        safe_write(_sb_append_note, user_id, raw_message, parsed, calendar_event_id, status)
         return True
     except Exception as e:
         print(f"[db.notes] append_note error: {e}")
@@ -178,6 +186,8 @@ def create_recurring_reminder(user_id: str, display_note: str, current_dt: datet
              "REMINDER", stored_note, next_dt.isoformat(), "", "OK"],
             value_input_option="USER_ENTERED"
         )
+        # Dual-write Supabase — สร้าง recurring reminder รอบถัดไป
+        safe_write(_sb_create_recurring, user_id, display_note, current_dt, recurrence, extras)
         return True
     except Exception as e:
         print(f"[db.notes] create_recurring_reminder error: {e}")

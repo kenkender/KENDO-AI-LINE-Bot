@@ -1,6 +1,11 @@
 from datetime import datetime
 import pytz
 from db.client import get_sheet_client, get_or_create_sheet
+from db_supabase import safe_write
+from db_supabase.prefs import (
+    set_briefing as _sb_set_briefing,
+    set_recurring_remind_day as _sb_set_recurring_day,
+)
 
 
 def _user_prefs_sheet(spreadsheet):
@@ -47,6 +52,8 @@ def set_briefing(user_id: str, hour, city: str = "", minute: int = 0) -> bool:
             sheet.update_cell(row_idx, minute_col, minute_val)
         else:
             sheet.append_row([user_id, hour_val, city_val, now, minute_val])
+        # Dual-write Supabase
+        safe_write(_sb_set_briefing, user_id, hour, city_val, minute_val)
         return True
     except Exception as e:
         print(f"[db.prefs] set_briefing error: {e}")
@@ -97,6 +104,8 @@ def set_recurring_remind_day(user_id: str, day: int) -> bool:
                 row_data.append("")
             row_data.append(day_val)
             sheet.append_row(row_data)
+        # Dual-write Supabase
+        safe_write(_sb_set_recurring_day, user_id, day)
         return True
     except Exception as e:
         print(f"[db.prefs] set_recurring_remind_day error: {e}")

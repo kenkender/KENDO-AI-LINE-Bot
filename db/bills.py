@@ -2,6 +2,11 @@ import calendar as cal
 from datetime import datetime
 import pytz
 from db.client import get_sheet_client, get_or_create_sheet
+from db_supabase import safe_write
+from db_supabase.bills import (
+    add_bill as _sb_add_bill,
+    delete_bill as _sb_delete_bill,
+)
 
 
 def _bills_sheet(spreadsheet):
@@ -17,6 +22,7 @@ def add_bill(user_id: str, name: str, amount: float, due_day: int) -> bool:
         sheet = _bills_sheet(spreadsheet)
         now = datetime.now(pytz.timezone("Asia/Bangkok")).isoformat()
         sheet.append_row([user_id, name, amount, due_day, "ACTIVE", "", now])
+        safe_write(_sb_add_bill, user_id, name, amount, due_day)
         return True
     except Exception as e:
         print(f"[db.bills] add_bill error: {e}")
@@ -54,6 +60,7 @@ def delete_bill(user_id: str, keyword: str) -> dict:
             return {"success": False}
         row_idx, r = matched[0]
         sheet.update_cell(row_idx, 5, "DELETED")
+        safe_write(_sb_delete_bill, user_id, keyword)
         return {"success": True, "name": r.get("bill_name", "")}
     except Exception as e:
         print(f"[db.bills] delete_bill error: {e}")

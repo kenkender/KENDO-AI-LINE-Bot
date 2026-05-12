@@ -2,6 +2,12 @@ from datetime import datetime
 import pytz
 from db.client import get_sheet_client, get_or_create_sheet
 from db.summary import get_summary
+from db_supabase import safe_write
+from db_supabase.budget import (
+    set_budget as _sb_set_budget,
+    set_savings_goal as _sb_set_savings,
+    mark_budget_warned as _sb_mark_warned,
+)
 
 
 def _settings_sheet(spreadsheet):
@@ -30,6 +36,8 @@ def set_budget(user_id: str, amount: float) -> bool:
             sheet.update_cell(row_idx, 4, now)
         else:
             sheet.append_row([user_id, amount, existing.get("savings_goal", ""), now])
+        # Dual-write Supabase
+        safe_write(_sb_set_budget, user_id, amount)
         return True
     except Exception as e:
         print(f"[db.budget] set_budget error: {e}")
@@ -60,6 +68,8 @@ def set_savings_goal(user_id: str, amount: float) -> bool:
             sheet.update_cell(row_idx, 4, now)
         else:
             sheet.append_row([user_id, existing.get("budget", ""), amount, now])
+        # Dual-write Supabase
+        safe_write(_sb_set_savings, user_id, amount)
         return True
     except Exception as e:
         print(f"[db.budget] set_savings_goal error: {e}")
@@ -118,8 +128,12 @@ def mark_budget_warned(user_id: str, month_key: str, level: int) -> bool:
                 row_idx = i + 2
                 sheet.update_cell(row_idx, 3, new_levels)
                 sheet.update_cell(row_idx, 4, now)
+                # Dual-write Supabase
+                safe_write(_sb_mark_warned, user_id, month_key, level)
                 return True
         sheet.append_row([user_id, month_key, str(level), now])
+        # Dual-write Supabase
+        safe_write(_sb_mark_warned, user_id, month_key, level)
         return True
     except Exception as e:
         print(f"[db.budget] mark_budget_warned error: {e}")

@@ -11,6 +11,12 @@ NOTE: column name "user_id" ในตารางนี้ ไม่เหมื
 from datetime import datetime, timedelta
 import pytz
 from db.client import get_sheet_client, get_or_create_sheet
+from db_supabase import safe_write
+from db_supabase.interval_reminder import (
+    add_interval_reminder as _sb_add_interval,
+    cancel_interval_reminder_by_label as _sb_cancel_label,
+    cancel_all_interval_reminders as _sb_cancel_all,
+)
 
 _COLS = ["user_id", "label", "interval_minutes", "next_fire", "active", "created_at"]
 _BKK = pytz.timezone("Asia/Bangkok")
@@ -44,6 +50,7 @@ def add_interval_reminder(user_id: str, label: str, interval_minutes: int) -> di
         now = datetime.now(_BKK)
         next_fire = (now + timedelta(minutes=interval_minutes)).isoformat()
         sheet.append_row([user_id, label, interval_minutes, next_fire, "TRUE", now.isoformat()])
+        safe_write(_sb_add_interval, user_id, label, interval_minutes)
         return {"success": True}
     except Exception as e:
         print(f"[db.interval_reminder] add error: {e}")
@@ -130,6 +137,7 @@ def cancel_interval_reminder_by_label(user_id: str, label: str) -> dict:
                     and label.lower() in r.get("label", "").lower()):
                 sheet.update_cell(i + 2, active_col, "FALSE")
                 cancelled += 1
+        safe_write(_sb_cancel_label, user_id, label)
         return {"success": True, "cancelled_count": cancelled}
     except Exception as e:
         print(f"[db.interval_reminder] cancel error: {e}")
@@ -148,6 +156,7 @@ def cancel_all_interval_reminders(user_id: str) -> int:
             if r.get("user_id") == user_id and str(r.get("active", "")).upper() == "TRUE":
                 sheet.update_cell(i + 2, active_col, "FALSE")
                 count += 1
+        safe_write(_sb_cancel_all, user_id)
         return count
     except Exception as e:
         print(f"[db.interval_reminder] cancel_all error: {e}")

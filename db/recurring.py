@@ -6,6 +6,11 @@ db/recurring.py — รายจ่ายซ้ำ (Recurring Expense) เช่
 from datetime import datetime
 import pytz
 from db.client import get_sheet_client, get_or_create_sheet
+from db_supabase import safe_write
+from db_supabase.recurring import (
+    add_recurring_items as _sb_add_recurring,
+    delete_recurring_item as _sb_delete_recurring,
+)
 
 
 def _recurring_sheet(spreadsheet):
@@ -30,6 +35,9 @@ def add_recurring_items(user_id: str, items: list) -> int:
                 continue
             sheet.append_row([user_id, name, amount, category, "ACTIVE", now])
             added += 1
+        # Dual-write: bulk insert ไป Supabase ในครั้งเดียว
+        if added > 0:
+            safe_write(_sb_add_recurring, user_id, items)
         return added
     except Exception as e:
         print(f"[db.recurring] add_recurring_items error: {e}")
@@ -74,6 +82,7 @@ def delete_recurring_item(user_id: str, keyword: str) -> dict:
             return {"success": False}
         row_idx, r = matched[0]
         sheet.update_cell(row_idx, 5, "DELETED")
+        safe_write(_sb_delete_recurring, user_id, keyword)
         return {"success": True, "name": r.get("item_name", "")}
     except Exception as e:
         print(f"[db.recurring] delete_recurring_item error: {e}")

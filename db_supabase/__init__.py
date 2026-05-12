@@ -3,6 +3,22 @@ db_supabase — Supabase (PostgreSQL) data layer
 แทน db/ (Google Sheets) เมื่อ migration เสร็จ
 """
 from db_supabase.client import get_supabase, is_supabase_configured
+
+
+def safe_write(operation, *args, **kwargs):
+    """Best-effort write to Supabase — สำหรับ dual-write ใน db/
+    - คืน None ถ้า env ไม่ตั้งค่า หรือ operation fail
+    - Sheets path ใน db/ จะไม่ถูกกระทบ
+    """
+    try:
+        if not is_supabase_configured():
+            return None
+        return operation(*args, **kwargs)
+    except Exception as e:
+        op_name = getattr(operation, "__name__", "?")
+        print(f"[dual-write] {op_name} error: {e}")
+        return None
+
 from db_supabase.users import (
     get_or_create_user, get_user_id, get_tier, set_tier, get_all_line_user_ids,
 )

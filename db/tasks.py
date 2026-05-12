@@ -1,6 +1,11 @@
 from datetime import datetime
 import pytz
 from db.client import get_sheet_client, get_or_create_sheet
+from db_supabase import safe_write
+from db_supabase.tasks import (
+    add_task as _sb_add_task,
+    complete_task as _sb_complete_task,
+)
 
 
 def _tasks_sheet(spreadsheet):
@@ -16,6 +21,7 @@ def add_task(user_id: str, task: str) -> bool:
         sheet = _tasks_sheet(spreadsheet)
         now = datetime.now(pytz.timezone("Asia/Bangkok")).isoformat()
         sheet.append_row([now, user_id, task, "PENDING"])
+        safe_write(_sb_add_task, user_id, task)
         return True
     except Exception as e:
         print(f"[db.tasks] add_task error: {e}")
@@ -56,6 +62,8 @@ def complete_task(user_id: str, keyword: str) -> dict:
         if len(matched) == 1:
             row_idx, r = matched[0]
             sheet.update_cell(row_idx, 4, "DONE")
+            # Dual-write Supabase — ค้นด้วย keyword เดียวกัน
+            safe_write(_sb_complete_task, user_id, keyword)
             return {"success": True, "task": r.get("task", "")}
         return {"success": False, "ambiguous": [r.get("task", "") for _, r in matched]}
     except Exception as e:
